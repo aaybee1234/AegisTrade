@@ -17,7 +17,11 @@
                     "dev":  "concurrently \"npm run dev:api\" \"npm run dev:web\"",
                     "verify":  "npm run typecheck \u0026\u0026 npm run build",
                     "db:up":  "docker compose -f infra/docker-compose.yml up -d postgres redis",
-                    "db:schema":  "psql \"$DATABASE_URL\" -f infra/db/001_initial_schema.sql"
+                    "db:schema":  "psql \"$DATABASE_URL\" -f infra/db/001_initial_schema.sql",
+                    "windows:start":  "powershell -ExecutionPolicy Bypass -File deploy/windows/start.ps1",
+                    "windows:stop":  "powershell -ExecutionPolicy Bypass -File deploy/windows/stop.ps1",
+                    "windows:status":  "powershell -ExecutionPolicy Bypass -File deploy/windows/status.ps1",
+                    "windows:test-mt5":  "powershell -ExecutionPolicy Bypass -File deploy/windows/test-mt5.ps1"
                 },
     "engines":  {
                     "node":  "\u003e=20"

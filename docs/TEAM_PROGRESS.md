@@ -453,3 +453,62 @@ Current AI rule implementation:
 - AI cannot bypass risk rules: implemented because execution only happens after deterministic `RiskManager.validate()`.
 
 Main remaining gap: persistence and scheduler. The system can read, rank, and execute demo trades, but signal history, AI reviews, risk decisions, and trade outcomes are not yet written to Postgres.
+
+## Update: Windows VPS Startup Scripts
+
+Added a lightweight Windows VPS startup kit for the first low-cost deployment:
+
+```text
+deploy/windows/install.ps1
+deploy/windows/start.ps1
+deploy/windows/stop.ps1
+deploy/windows/status.ps1
+deploy/windows/test-mt5.ps1
+deploy/windows/README.md
+```
+
+Recommended first VPS profile:
+
+```text
+2 vCPU
+2 GB RAM
+Windows Server
+One MT5 terminal/account
+Node API + Next.js dashboard on same VPS
+```
+
+This keeps startup cost low. Scale by adding RAM or separating dashboard/database later.
+
+## Update: Fresh Windows VPS Bootstrap
+
+Added a one-script bootstrap path for a new Windows VPS:
+
+```text
+deploy/windows/bootstrap.ps1
+```
+
+The bootstrap script can:
+
+- download/install Git, Node.js, Python, and Exness MT5
+- clone or update the AegisTrade GitHub repo
+- prompt for OpenAI and Exness MT5 credentials
+- create `.env`
+- install npm and Python worker dependencies
+- start the API and dashboard
+
+It is designed for Windows Server 2016 where `winget` is usually unavailable. The README now includes a raw GitHub download command so the VPS does not need Git before the first run.
+
+S3/CDN artifact support was also added through `-ArtifactBaseUrl`, using this file layout:
+
+```text
+node-v20.18.1-x64.msi
+Git-2.51.0-64-bit.exe
+python-3.12.8-amd64.exe
+exness5setup.exe
+```
+
+AWS CLI credentials are not required on the VPS if installer artifacts are public or pre-signed HTTPS URLs. Credentials are only needed if we later automate S3 bucket creation/upload.
+
+Known limitation:
+
+- MT5 installation can be started by script, but MT5 may still require one manual GUI login/confirmation on the VPS before the Python worker can connect reliably.

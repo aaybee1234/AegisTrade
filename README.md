@@ -268,3 +268,26 @@ More setup detail:
 docs/runbooks/LOCAL_DEVELOPMENT.md
 docs/GITHUB_READINESS.md
 ```
+
+## Windows VPS Startup
+
+Low-cost Windows VPS scripts are available in:
+
+```text
+deploy/windows/
+```
+
+Useful commands:
+
+```powershell
+npm run windows:start
+npm run windows:stop
+npm run windows:status
+npm run windows:test-mt5
+```
+
+Full guide:
+
+```text
+deploy/windows/README.md
+```
