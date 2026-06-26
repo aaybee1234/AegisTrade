@@ -1,0 +1,28 @@
+{
+    "name":  "aegistrade",
+    "private":  true,
+    "version":  "0.1.0",
+    "description":  "Demo-first agentic trading bot platform for Exness MT5.",
+    "workspaces":  [
+                       "apps/*",
+                       "services/api",
+                       "packages/*"
+                   ],
+    "scripts":  {
+                    "dev:web":  "npm --workspace apps/web run dev",
+                    "dev:api":  "npm --workspace services/api run dev",
+                    "build":  "npm --workspaces run build",
+                    "lint":  "npm --workspaces run lint",
+                    "typecheck":  "npm --workspaces run typecheck",
+                    "dev":  "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+                    "verify":  "npm run typecheck \u0026\u0026 npm run build",
+                    "db:up":  "docker compose -f infra/docker-compose.yml up -d postgres redis",
+                    "db:schema":  "psql \"$DATABASE_URL\" -f infra/db/001_initial_schema.sql"
+                },
+    "engines":  {
+                    "node":  "\u003e=20"
+                },
+    "devDependencies":  {
+                            "concurrently":  "^8.2.2"
+                        }
+}

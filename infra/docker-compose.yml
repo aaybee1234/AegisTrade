@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: aegistrade-postgres
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegis
+      POSTGRES_DB: aegistrade
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: aegistrade-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres-data:
+
