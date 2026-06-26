@@ -1,7 +1,9 @@
-param([string]$ProjectDir = "D:\AegisTrade")
+param([string]$ProjectDir = "C:\AegisTrade")
 
-$procs = Get-CimInstance Win32_Process -Filter "name = 'node.exe'" | Where-Object { $_.CommandLine -like "*$ProjectDir*" }
-foreach ($p in $procs) {
-  Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-  Write-Host "Stopped node process $($p.ProcessId)"
+$tasks = @("AegisTrade-MT5-Worker", "AegisTrade-Nginx", "AegisTrade-Web", "AegisTrade-API")
+foreach ($task in $tasks) {
+  if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+    Write-Host "Stopped $task"
+  }
 }

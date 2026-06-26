@@ -1,4 +1,4 @@
-param([string]$ProjectDir = "D:\AegisTrade")
+param([string]$ProjectDir = "C:\AegisTrade")
 
 $ErrorActionPreference = "Stop"
 Push-Location (Join-Path $ProjectDir "services\worker")

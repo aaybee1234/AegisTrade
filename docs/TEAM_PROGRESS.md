@@ -512,3 +512,35 @@ AWS CLI credentials are not required on the VPS if installer artifacts are publi
 Known limitation:
 
 - MT5 installation can be started by script, but MT5 may still require one manual GUI login/confirmation on the VPS before the Python worker can connect reliably.
+## 2026-06-27: Account-Scoped MT5 Bridge and Trading Core
+
+Completed:
+
+- diagnosed Windows session isolation as the cause of public MT5 IPC timeouts
+- added direct MT5 terminal/account initialization
+- added per-account runtime snapshots and command queues
+- added automatic demo trading cycle and interactive worker daemon
+- added broker-aware maximum estimated loss sizing
+- added desired $0.50 profit close/TP behavior
+- added 100 completed-trades-per-day ceiling
+- added measured daily wins, losses, net P/L, and win rate
+- enforced AI parameter immutability and deterministic risk vetoes
+- added control-token-protected run-agent command
+- added persistent API, web, Nginx, MT5, and worker tasks
+- added production Windows and future Terraform runbooks
+
+Current operating mode:
+
+- one Exness demo account (`primary`)
+- multi-user auth/account prototype retained for later integration
+- `AUTO_TRADE_ENABLED=false` until demo observation is approved
+- no promised win rate or fixed return; dashboard reports measured results
+
+Next milestones:
+
+- validate the worker bridge through reboot/RDP disconnect tests
+- paper-test strategy performance over a meaningful sample
+- add an append-only trade decision/audit journal
+- integrate database-backed users and encrypted account credentials
+- allocate isolated terminal sessions per active user
+- add subscription entitlements only after the trading core is validated

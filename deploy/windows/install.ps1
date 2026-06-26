@@ -1,5 +1,5 @@
-﻿param(
-  [string]$ProjectDir = "D:\AegisTrade",
+param(
+  [string]$ProjectDir = "C:\AegisTrade",
   [string]$RepoUrl = "https://github.com/aaybee1234/AegisTrade.git",
   [switch]$SkipClone
 )
@@ -60,4 +60,3 @@ Pop-Location
 Write-Host "Install complete." -ForegroundColor Green
 Write-Host "Next: edit $ProjectDir\.env, open/login MT5, then run deploy\windows\start.ps1"
 Pop-Location
-

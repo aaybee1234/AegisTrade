@@ -37,8 +37,8 @@ class AiReviewAgent:
                         "role": "system",
                         "content": (
                             "You are the AI review agent for a demo-only MT5 trading bot. "
-                            "You do not execute trades. Return only valid JSON. "
-                            "Be conservative. If the signal is HOLD, keep it HOLD."
+                            "You do not execute trades or modify trade parameters. Return only valid JSON. "
+                            "You may explain, rank, or veto the supplied setup. If the signal is HOLD, veto it."
                         )
                     },
                     {
@@ -88,14 +88,14 @@ class AiReviewAgent:
 
         data = json.loads(output_text)
         return ReviewedSignal(
-            symbol=str(data.get("symbol", signal.symbol)),
-            action=str(data.get("action", signal.action)),
-            confidence=float(data.get("confidence", signal.confidence)),
-            lot_size=float(data.get("lot_size", signal.lot_size)),
-            entry_type=str(data.get("entry_type", signal.entry_type)),
-            stop_loss_pips=int(data.get("stop_loss_pips", signal.stop_loss_pips)),
-            take_profit_pips=int(data.get("take_profit_pips", signal.take_profit_pips)),
-            approved_for_risk_check=bool(data.get("approved_for_risk_check", signal.action != "HOLD")),
+            symbol=signal.symbol,
+            action=signal.action,
+            confidence=min(float(data.get("confidence", signal.confidence)), signal.confidence),
+            lot_size=signal.lot_size,
+            entry_type=signal.entry_type,
+            stop_loss_pips=signal.stop_loss_pips,
+            take_profit_pips=signal.take_profit_pips,
+            approved_for_risk_check=(signal.action != "HOLD" and bool(data.get("approved_for_risk_check", False))),
             reason=str(data.get("reason", signal.reason)),
             warnings=list(data.get("warnings", []))
         )

@@ -4,9 +4,7 @@ from aegis_worker.trading_cycle import run_cycle
 
 
 def main() -> None:
-    payload = run_cycle()
-    for event in payload.get("events", []):
-        print(json.dumps(event))
+    print(json.dumps(run_cycle()))
 
 
 if __name__ == "__main__":

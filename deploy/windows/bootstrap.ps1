@@ -1,5 +1,5 @@
-﻿param(
-  [string]$ProjectDir = "D:\AegisTrade",
+param(
+  [string]$ProjectDir = "C:\AegisTrade",
   [string]$RepoUrl = "https://github.com/aaybee1234/AegisTrade.git",
   [string]$InstallersDir = "C:\Installers",
   [string]$NodeUrl = "https://nodejs.org/dist/v20.18.1/node-v20.18.1-x64.msi",
@@ -180,7 +180,7 @@ function Write-EnvFile {
   if (-not $script:ExnessServer) { $script:ExnessServer = Read-Host "Exness MT5 server, for example Exness-MT5Trial16" }
 
   $lines = @(
-    "NODE_ENV=development",
+    "NODE_ENV=production",
     "DATABASE_URL=postgresql://aegis:aegis@localhost:5432/aegistrade",
     "REDIS_URL=redis://localhost:6379",
     "API_PORT=4000",
@@ -190,7 +190,17 @@ function Write-EnvFile {
     "OPENAI_REASONING_MODEL=gpt-4.1",
     "EXNESS_DEMO_LOGIN=$script:ExnessLogin",
     "EXNESS_DEMO_PASSWORD=$script:ExnessPassword",
-    "EXNESS_DEMO_SERVER=$script:ExnessServer"
+    "EXNESS_DEMO_SERVER=$script:ExnessServer",
+    "MT5_TERMINAL_PATH=C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe",
+    "MT5_ACCOUNT_ID=primary",
+    "SINGLE_USER_ACCOUNT_ID=primary",
+    "SINGLE_USER_CONTROL_TOKEN=$([guid]::NewGuid().ToString('N'))",
+    "AUTO_TRADE_ENABLED=false",
+    "WORKER_POLL_SECONDS=5",
+    "MAX_OPEN_TRADES=2",
+    "MAX_DAILY_TRADES=100",
+    "MAX_RISK_PER_TRADE_USD=10",
+    "TARGET_PROFIT_PER_TRADE_USD=0.50"
   )
   Set-Content -LiteralPath ".env" -Value $lines -Encoding UTF8
   Write-Ok ".env written at $ProjectDir\.env"
@@ -218,7 +228,7 @@ function Install-AppDependencies {
 function Start-AegisTrade {
   if (-not $StartApp) { return }
   Write-Step "Starting AegisTrade"
-  & (Join-Path $ProjectDir "deploy\windows\start.ps1") -ProjectDir $ProjectDir
+  & (Join-Path $ProjectDir "deploy\windows\configure-services.ps1") -ProjectDir $ProjectDir
 }
 
 Write-Step "AegisTrade fresh Windows VPS bootstrap"
@@ -252,5 +262,3 @@ Write-Host "  .\deploy\windows\status.ps1"
 Write-Host "  .\deploy\windows\test-mt5.ps1"
 Write-Host ""
 Write-Warn "MT5 may still require one manual GUI login/confirmation on the VPS. Keep MT5 open while AegisTrade is running."
-
-

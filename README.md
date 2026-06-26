@@ -291,3 +291,19 @@ Full guide:
 ```text
 deploy/windows/README.md
 ```
+## Current Single-Account Architecture
+
+The production Windows deployment uses an account-scoped MT5 bridge. The interactive Python worker communicates with Exness MT5 and writes snapshots under `runtime/accounts/<account_id>`. The API reads those snapshots and queues commands for the same worker, avoiding unsupported cross-session MT5 IPC.
+
+Core demo guardrails:
+
+- autonomous execution is off by default
+- demo accounts only
+- maximum two simultaneous positions
+- maximum 100 completed trades per UTC day
+- maximum estimated loss defaults to $10 per trade
+- desired profit close defaults to $0.50
+- AI may explain, rank, lower confidence, or veto
+- AI cannot change deterministic order parameters or bypass risk
+
+Win rate is reported from actual closed bot trades and is never guaranteed. See [Windows deployment](docs/runbooks/WINDOWS_VPS_DEPLOYMENT.md) and [future Terraform](docs/FUTURE_TERRAFORM.md).

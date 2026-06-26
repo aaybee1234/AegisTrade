@@ -1,12 +1,43 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Router } from "express";
 
 const execFileAsync = promisify(execFile);
 export const mt5Router = Router();
 
-const workerCwd = path.resolve(process.cwd(), "..", "worker");
+const routeDir = path.dirname(fileURLToPath(import.meta.url));
+const apiRoot = path.resolve(routeDir, "..", "..");
+const projectRoot = path.resolve(apiRoot, "..", "..");
+const workerCwd = path.join(projectRoot, "services", "worker");
+const defaultAccountId = process.env.SINGLE_USER_ACCOUNT_ID ?? "primary";
+
+function safeAccountId(value: string) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+    throw new Error("Invalid account id");
+  }
+  return value;
+}
+
+function accountRuntimeDir(accountId = defaultAccountId) {
+  return path.join(projectRoot, "runtime", "accounts", safeAccountId(accountId));
+}
+
+async function readRuntimeJson<T>(name: string, accountId = defaultAccountId): Promise<T> {
+  const content = await readFile(path.join(accountRuntimeDir(accountId), name), "utf8");
+  return JSON.parse(content) as T;
+}
+
+async function queueCommand(command: Record<string, unknown>, accountId = defaultAccountId) {
+  const id = randomUUID();
+  const commandsDir = path.join(accountRuntimeDir(accountId), "commands");
+  await mkdir(commandsDir, { recursive: true });
+  await writeFile(path.join(commandsDir, `${id}.json`), JSON.stringify(command), "utf8");
+  return id;
+}
 
 async function runWorkerJson(moduleName: string, args: string[] = []) {
   const { stdout } = await execFileAsync("python", ["-m", moduleName, ...args], {
@@ -14,51 +45,64 @@ async function runWorkerJson(moduleName: string, args: string[] = []) {
     timeout: 45_000,
     windowsHide: true
   });
-
   return JSON.parse(stdout);
 }
 
-async function closeMt5Position(ticket: string) {
+async function statusWithDevelopmentFallback() {
   try {
-    return await runWorkerJson("aegis_worker.close_position_json", [ticket]);
-  } catch (error: any) {
-    const stdout = error?.stdout;
-    if (stdout) {
-      return JSON.parse(stdout);
+    return await readRuntimeJson<any>("status.json");
+  } catch (runtimeError) {
+    if (process.env.NODE_ENV === "development") {
+      return runWorkerJson("aegis_worker.status_json");
     }
-    throw error;
+    throw runtimeError;
   }
 }
 
+mt5Router.post("/cycle", async (req, res) => {
+  const expectedToken = process.env.SINGLE_USER_CONTROL_TOKEN;
+  const suppliedToken = req.header("x-aegis-control-token");
+  if (!expectedToken) {
+    res.status(503).json({ error: "Single-user control endpoint is disabled." });
+    return;
+  }
+  if (suppliedToken !== expectedToken) {
+    res.status(401).json({ error: "Invalid control token." });
+    return;
+  }
+
+  try {
+    const commandId = await queueCommand({ type: "run_cycle" });
+    res.status(202).json({ ok: true, queued: true, command_id: commandId });
+  } catch (error) {
+    res.status(503).json({ ok: false, error: error instanceof Error ? error.message : "Trading cycle unavailable" });
+  }
+});
+
 mt5Router.get("/symbols", (_req, res) => {
-  res.json({
-    symbols: ["XAUUSDm", "EURUSDm", "GBPUSDm", "USDJPYm", "BTCUSDm"]
-  });
+  res.json({ symbols: ["XAUUSDm", "EURUSDm", "GBPUSDm", "USDJPYm", "BTCUSDm"] });
 });
 
 mt5Router.get("/status", async (_req, res) => {
   try {
-    const status = await runWorkerJson("aegis_worker.status_json");
-    res.json(status);
+    res.json(await statusWithDevelopmentFallback());
   } catch (error) {
     res.status(503).json({
       account: {
         connected: false,
         is_demo: true,
-        connection_error: error instanceof Error ? error.message : "MT5 status unavailable"
+        connection_error: "Interactive MT5 worker snapshot is unavailable."
       },
       positions: [],
-      summary: {
-        open_positions: 0,
-        floating_pl: 0
-      }
+      summary: { open_positions: 0, floating_pl: 0 },
+      error: error instanceof Error ? error.message : "MT5 status unavailable"
     });
   }
 });
 
 mt5Router.get("/positions", async (_req, res) => {
   try {
-    const status = await runWorkerJson("aegis_worker.status_json");
+    const status = await statusWithDevelopmentFallback();
     res.json({ positions: status.positions, summary: status.summary });
   } catch (error) {
     res.status(503).json({
@@ -71,20 +115,24 @@ mt5Router.get("/positions", async (_req, res) => {
 
 mt5Router.get("/advisory", async (_req, res) => {
   try {
-    const advisory = await runWorkerJson("aegis_worker.advisory_json");
-    res.json(advisory);
+    res.json(await readRuntimeJson("advisory.json"));
   } catch (error) {
-    res.status(503).json({
-      setups: [],
-      error: error instanceof Error ? error.message : "MT5 advisory unavailable"
-    });
+    if (process.env.NODE_ENV === "development") {
+      try {
+        res.json(await runWorkerJson("aegis_worker.advisory_json"));
+        return;
+      } catch {
+        // Use the standard unavailable response below.
+      }
+    }
+    res.status(503).json({ setups: [], error: error instanceof Error ? error.message : "MT5 advisory unavailable" });
   }
 });
 
 mt5Router.get("/accounts/:id/status", async (req, res) => {
   try {
-    const status = await runWorkerJson("aegis_worker.status_json");
-    res.json({ id: req.params.id, ...status.account });
+    const status = await readRuntimeJson<any>("status.json", req.params.id);
+    res.json({ id: req.params.id, ...status.account, bridge: status.bridge });
   } catch (error) {
     res.status(503).json({
       id: req.params.id,
@@ -97,8 +145,8 @@ mt5Router.get("/accounts/:id/status", async (req, res) => {
 
 mt5Router.delete("/positions/:ticket", async (req, res) => {
   try {
-    const result = await closeMt5Position(req.params.ticket);
-    res.status(result.closed ? 200 : 400).json(result);
+    const commandId = await queueCommand({ type: "close_position", ticket: req.params.ticket });
+    res.status(202).json({ closed: false, queued: true, ticket: req.params.ticket, command_id: commandId });
   } catch (error) {
     res.status(503).json({
       closed: false,

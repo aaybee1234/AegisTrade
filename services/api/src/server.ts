@@ -1,10 +1,17 @@
 import cors from "cors";
 import dotenv from "dotenv";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import express from "express";
 import { botsRouter } from "./routes/bots.js";
 import { mt5Router } from "./routes/mt5.js";
 
-dotenv.config();
+const envCandidates = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "..", "..", ".env")
+];
+const envPath = envCandidates.find((candidate) => existsSync(candidate));
+dotenv.config(envPath ? { path: envPath } : undefined);
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 4000);
@@ -26,4 +33,3 @@ app.use("/mt5", mt5Router);
 app.listen(port, () => {
   console.log(`AegisTrade API listening on http://localhost:${port}`);
 });
-

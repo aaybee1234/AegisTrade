@@ -26,17 +26,24 @@ class DemoMt5Client:
             self.connection_error = "MetaTrader5 Python package is not installed."
             return
 
-        if not mt5.initialize():
-            self.connection_error = f"MT5 initialize failed: {mt5.last_error()}"
+        initialize_args: dict[str, Any] = {
+            "login": int(settings.exness_demo_login or "0"),
+            "password": settings.exness_demo_password,
+            "server": settings.exness_demo_server,
+            "timeout": 60_000
+        }
+        if settings.mt5_terminal_path:
+            initialize_args["path"] = settings.mt5_terminal_path
+
+        if not mt5.initialize(**initialize_args):
+            self.connection_error = f"MT5 initialize/login failed: {mt5.last_error()}"
+            mt5.shutdown()
             return
 
-        authorized = mt5.login(
-            login=int(settings.exness_demo_login or "0"),
-            password=settings.exness_demo_password,
-            server=settings.exness_demo_server
-        )
-        if not authorized:
-            self.connection_error = f"MT5 login failed: {mt5.last_error()}"
+        info = mt5.account_info()
+        if info is None or str(info.login) != str(settings.exness_demo_login):
+            self.connection_error = f"MT5 opened but the configured account is unavailable: {mt5.last_error()}"
+            mt5.shutdown()
             return
 
         self.mt5 = mt5
@@ -232,6 +239,69 @@ class DemoMt5Client:
             for rate in rates
         ]
 
+    def daily_trade_stats(self) -> dict[str, Any]:
+        if not self.connected or self.mt5 is None:
+            return {
+                "opened": 0,
+                "closed": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0,
+                "net_profit": 0,
+                "remaining": settings.max_daily_trades
+            }
+
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        deals = self.mt5.history_deals_get(start, now) or []
+        bot_deals = [deal for deal in deals if int(getattr(deal, "magic", 0)) == 260625]
+        opened = sum(1 for deal in bot_deals if deal.entry == self.mt5.DEAL_ENTRY_IN)
+        closed_deals = [
+            deal for deal in bot_deals
+            if deal.entry in {self.mt5.DEAL_ENTRY_OUT, self.mt5.DEAL_ENTRY_OUT_BY}
+        ]
+        outcomes = [
+            float(deal.profit) + float(deal.commission) + float(deal.swap)
+            for deal in closed_deals
+        ]
+        wins = sum(1 for profit in outcomes if profit > 0)
+        losses = sum(1 for profit in outcomes if profit <= 0)
+        closed = len(closed_deals)
+        return {
+            "opened": opened,
+            "closed": closed,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": round((wins / closed * 100) if closed else 0, 2),
+            "net_profit": round(sum(outcomes), 2),
+            "remaining": max(settings.max_daily_trades - closed, 0)
+        }
+
+    def close_profit_targets(self) -> list[dict[str, Any]]:
+        results = []
+        for position in self.positions():
+            if position["magic"] != 260625:
+                continue
+            if position["profit"] >= settings.target_profit_per_trade_usd:
+                results.append(self.close_position(int(position["ticket"])))
+        return results
+
+    def _normalized_volume(self, requested: float, symbol_info: Any) -> float:
+        minimum = float(symbol_info.volume_min)
+        maximum = float(symbol_info.volume_max)
+        step = float(symbol_info.volume_step)
+        capped = min(max(requested, minimum), maximum)
+        steps = int((capped - minimum) / step + 1e-9)
+        normalized = minimum + steps * step
+        return round(normalized, 8)
+
+    def _estimated_profit(self, order_type: int, symbol: str, volume: float, start: float, end: float) -> float:
+        if self.mt5 is None:
+            return 0
+        result = self.mt5.order_calc_profit(order_type, symbol, volume, start, end)
+        return float(result) if result is not None else 0
     def place_order(self, order: dict[str, Any]) -> dict[str, Any]:
         if not self.connected or self.mt5 is None:
             has_credentials = self._has_credentials()
@@ -254,20 +324,50 @@ class DemoMt5Client:
 
         action = order["action"]
         order_type = self.mt5.ORDER_TYPE_BUY if action == "BUY" else self.mt5.ORDER_TYPE_SELL
-        price = tick.ask if action == "BUY" else tick.bid
-        point = symbol_info.point
-        min_stop_points = max(getattr(symbol_info, "trade_stops_level", 0), 1)
+        price = float(tick.ask if action == "BUY" else tick.bid)
+        point = float(symbol_info.point)
+        digits = int(symbol_info.digits)
+        min_stop_points = max(int(getattr(symbol_info, "trade_stops_level", 0)), 1)
         sl_points = max(int(order["stop_loss_pips"]), min_stop_points + 50)
-        tp_points = max(int(order["take_profit_pips"]), min_stop_points + 100)
         sl_distance = sl_points * point
-        tp_distance = tp_points * point
         sl = price - sl_distance if action == "BUY" else price + sl_distance
+
+        volume = self._normalized_volume(float(order["lot_size"]), symbol_info)
+        estimated_loss = abs(self._estimated_profit(order_type, symbol, volume, price, sl))
+        if estimated_loss > settings.max_risk_per_trade_usd:
+            scaled = volume * settings.max_risk_per_trade_usd / estimated_loss
+            volume = self._normalized_volume(scaled, symbol_info)
+            estimated_loss = abs(self._estimated_profit(order_type, symbol, volume, price, sl))
+
+        if estimated_loss > settings.max_risk_per_trade_usd + 0.01:
+            return {
+                "accepted": False,
+                "mode": "risk-veto",
+                "ticket": None,
+                "comment": (
+                    f"Minimum broker volume risks ${estimated_loss:.2f}, above the "
+                    f"${settings.max_risk_per_trade_usd:.2f} limit."
+                ),
+                "order": order
+            }
+
+        tick_size = float(getattr(symbol_info, "trade_tick_size", point) or point)
+        tick_value = abs(float(getattr(symbol_info, "trade_tick_value", 0) or 0))
+        profit_per_price_unit = (tick_value / tick_size) * volume if tick_size > 0 else 0
+        desired_tp_distance = (
+            settings.target_profit_per_trade_usd / profit_per_price_unit
+            if profit_per_price_unit > 0 else int(order["take_profit_pips"]) * point
+        )
+        tp_distance = max(desired_tp_distance, (min_stop_points + 50) * point)
         tp = price + tp_distance if action == "BUY" else price - tp_distance
+        sl = round(sl, digits)
+        tp = round(tp, digits)
+        estimated_profit = abs(self._estimated_profit(order_type, symbol, volume, price, tp))
 
         request = {
             "action": self.mt5.TRADE_ACTION_DEAL,
             "symbol": symbol,
-            "volume": float(order["lot_size"]),
+            "volume": volume,
             "type": order_type,
             "price": price,
             "sl": sl,
@@ -289,5 +389,10 @@ class DemoMt5Client:
             "ticket": str(result_data.get("order")),
             "retcode": result_data.get("retcode"),
             "comment": result_data.get("comment"),
-            "order": order
+            "order": order,
+            "estimated_loss_usd": round(estimated_loss, 2),
+            "estimated_profit_usd": round(estimated_profit, 2),
+            "volume": volume,
+            "sl": sl,
+            "tp": tp
         }

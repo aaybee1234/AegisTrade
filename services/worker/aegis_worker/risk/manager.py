@@ -1,5 +1,7 @@
 from typing import Any
 
+from aegis_worker.config import settings
+
 
 class RiskManager:
     def __init__(self) -> None:
@@ -7,9 +9,18 @@ class RiskManager:
         self.max_lot_size = 0.01
         self.min_confidence = 0.65
 
-    def validate(self, signal: Any, account: dict[str, Any]) -> dict[str, Any]:
+    def validate(self, signal: Any, account: dict[str, Any], daily_stats: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not account.get("connected"):
+            return {"approved": False, "reason": "MT5 is not connected."}
+
         if not account.get("is_demo"):
             return {"approved": False, "reason": "Only demo accounts are allowed."}
+
+        if not account.get("trade_allowed") or not account.get("trade_expert"):
+            return {"approved": False, "reason": "MT5 automated trading is not allowed by the terminal/account."}
+
+        if daily_stats and int(daily_stats.get("closed", 0)) >= settings.max_daily_trades:
+            return {"approved": False, "reason": "Daily completed-trade limit reached."}
 
         if signal.action == "HOLD":
             return {"approved": False, "reason": signal.reason}
@@ -39,4 +50,3 @@ class RiskManager:
                 "take_profit_pips": signal.take_profit_pips
             }
         }
-

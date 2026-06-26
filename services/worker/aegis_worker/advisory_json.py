@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
@@ -8,31 +9,33 @@ from aegis_worker.risk.manager import RiskManager
 SYMBOLS = ["XAUUSDm", "EURUSDm", "BTCUSDm"]
 
 
-def main() -> None:
-    client = DemoMt5Client()
+def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
+    active_client = client or DemoMt5Client()
     ai_review_agent = AiReviewAgent()
     risk_manager = RiskManager()
-    account = client.account_info()
-    positions = client.positions()
-    ranked = []
+    account = active_client.account_info()
+    positions = active_client.positions()
+    daily = active_client.daily_trade_stats()
+    ranked: list[dict[str, Any]] = []
 
     for symbol in SYMBOLS:
         symbol_positions = [position for position in positions if position["symbol"] == symbol]
         try:
-            candles = client.candles(symbol=symbol, timeframe="M5", count=200)
-            symbol_info = client.symbol_info(symbol)
+            candles = active_client.candles(symbol=symbol, timeframe="M5", count=200)
+            symbol_info = active_client.symbol_info(symbol)
             signal = build_signal(symbol=symbol, candles=candles, symbol_info=symbol_info)
             reviewed = ai_review_agent.review(
                 signal=signal,
                 context={
                     "account": account,
+                    "daily": daily,
                     "open_positions": positions,
                     "symbol_info": symbol_info,
                     "latest_candle": candles[-1] if candles else None,
                     "mode": "demo-only-read-only-advisory"
                 }
             )
-            risk = risk_manager.validate(signal=reviewed, account=account)
+            risk = risk_manager.validate(signal=reviewed, account=account, daily_stats=daily)
             veto_reasons = []
             if symbol_positions:
                 veto_reasons.append("Open position already exists for this symbol.")
@@ -68,7 +71,11 @@ def main() -> None:
             })
 
     ranked.sort(key=lambda item: item["rank_score"], reverse=True)
-    print(json.dumps({"setups": ranked, "positions": positions, "account": account}))
+    return {"setups": ranked, "positions": positions, "account": account, "daily": daily}
+
+
+def main() -> None:
+    print(json.dumps(build_advisory()))
 
 
 if __name__ == "__main__":

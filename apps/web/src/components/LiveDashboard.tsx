@@ -46,6 +46,22 @@ type Mt5Status = {
     open_positions: number;
     floating_pl: number;
   };
+  daily: {
+    opened: number;
+    closed: number;
+    wins: number;
+    losses: number;
+    win_rate: number;
+    net_profit: number;
+    remaining: number;
+  };
+  bot: {
+    auto_trade_enabled: boolean;
+    max_open_trades: number;
+    max_daily_trades: number;
+    max_risk_per_trade_usd: number;
+    target_profit_per_trade_usd: number;
+  };
 };
 
 type Setup = {
@@ -65,19 +81,23 @@ type Advisory = {
   setups: Setup[];
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const EMPTY_STATUS: Mt5Status = {
   account: { connected: false, is_demo: true, connection_error: "Waiting for first sync." },
   positions: [],
-  summary: { open_positions: 0, floating_pl: 0 }
+  summary: { open_positions: 0, floating_pl: 0 },
+  daily: { opened: 0, closed: 0, wins: 0, losses: 0, win_rate: 0, net_profit: 0, remaining: 100 },
+  bot: { auto_trade_enabled: false, max_open_trades: 2, max_daily_trades: 100, max_risk_per_trade_usd: 10, target_profit_per_trade_usd: 0.5 }
 };
 
 const rules = [
   "Demo account required",
-  "Maximum 2 open trades in MVP",
+  "Maximum 2 simultaneous open trades",
   "Skip duplicate symbol positions",
   "Spread filter before entry",
-  "Symbol-specific ATR-style stops",
+  "Maximum $10 estimated loss per trade",
+  "$0.50 target profit with broker minimum-distance checks",
+  "Maximum 100 completed trades per UTC day",
   "AI review cannot bypass risk rules"
 ];
 
@@ -114,6 +134,7 @@ export function LiveDashboard() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [closingTicket, setClosingTicket] = useState<string | null>(null);
+  const [isRunningCycle, setIsRunningCycle] = useState(false);
 
   const account = status.account;
   const currency = account.currency ?? "USD";
@@ -161,6 +182,29 @@ export function LiveDashboard() {
     }
   }
 
+  async function runAgentCycle() {
+    let token = window.sessionStorage.getItem("aegis-control-token");
+    if (!token) {
+      token = window.prompt("Enter the single-user control token") ?? "";
+      if (!token) return;
+      window.sessionStorage.setItem("aegis-control-token", token);
+    }
+
+    setIsRunningCycle(true);
+    try {
+      await fetchJson("/mt5/cycle", {
+        method: "POST",
+        headers: { "x-aegis-control-token": token }
+      });
+    } catch (error) {
+      window.sessionStorage.removeItem("aegis-control-token");
+      setSyncError(error instanceof Error ? error.message : "Agent cycle failed");
+    } finally {
+      setIsRunningCycle(false);
+      await sync();
+    }
+  }
+
   return (
     <main className="appShell">
       <aside className="sidebar">
@@ -192,9 +236,9 @@ export function LiveDashboard() {
               <RefreshCw size={18} />
               {isSyncing ? "Syncing" : "Sync Now"}
             </button>
-            <button className="primary">
+            <button className="primary" onClick={() => void runAgentCycle()} disabled={isRunningCycle || !connected}>
               <Bot size={18} />
-              Start Bot
+              {isRunningCycle ? "Running" : "Run Agent"}
             </button>
           </div>
         </header>
@@ -234,8 +278,18 @@ export function LiveDashboard() {
           </div>
           <div className="metric">
             <span>Bot status</span>
-            <strong className="paused"><CirclePause size={18} /> Paused</strong>
-            <small>Safety gate active</small>
+            <strong className={status.bot.auto_trade_enabled ? "positive" : "paused"}><CirclePause size={18} /> {status.bot.auto_trade_enabled ? "Automatic" : "Advisory"}</strong>
+            <small>{money(status.bot.max_risk_per_trade_usd)} max risk / {money(status.bot.target_profit_per_trade_usd)} target</small>
+          </div>
+          <div className="metric liveMetric">
+            <span>Today</span>
+            <strong>{status.daily.closed} / {status.bot.max_daily_trades}</strong>
+            <small>{status.daily.remaining} completed trades remaining</small>
+          </div>
+          <div className="metric liveMetric">
+            <span>Measured win rate</span>
+            <strong>{status.daily.win_rate.toFixed(1)}%</strong>
+            <small>{status.daily.wins} wins / {status.daily.losses} losses</small>
           </div>
         </section>
 
