@@ -135,6 +135,7 @@ export function LiveDashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [closingTicket, setClosingTicket] = useState<string | null>(null);
   const [isRunningCycle, setIsRunningCycle] = useState(false);
+  const [isChangingTrading, setIsChangingTrading] = useState(false);
 
   const account = status.account;
   const currency = account.currency ?? "USD";
@@ -182,13 +183,46 @@ export function LiveDashboard() {
     }
   }
 
-  async function runAgentCycle() {
+  function getControlToken() {
     let token = window.sessionStorage.getItem("aegis-control-token");
     if (!token) {
-      token = window.prompt("Enter the single-user control token") ?? "";
-      if (!token) return;
-      window.sessionStorage.setItem("aegis-control-token", token);
+      token = window.prompt("Enter SINGLE_USER_CONTROL_TOKEN from C:\\AegisTrade\\.env") ?? "";
+      if (token) window.sessionStorage.setItem("aegis-control-token", token);
     }
+    return token;
+  }
+
+  async function setTradingEnabled(enabled: boolean) {
+    const token = getControlToken();
+    if (!token) return;
+
+    setIsChangingTrading(true);
+    try {
+      await fetchJson("/mt5/control", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-aegis-control-token": token
+        },
+        body: JSON.stringify({ enabled })
+      });
+      setStatus((current) => ({
+        ...current,
+        bot: { ...current.bot, auto_trade_enabled: enabled }
+      }));
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    } catch (error) {
+      window.sessionStorage.removeItem("aegis-control-token");
+      setSyncError(error instanceof Error ? error.message : "Trading control failed");
+    } finally {
+      setIsChangingTrading(false);
+      await sync();
+    }
+  }
+
+  async function runAgentCycle() {
+    const token = getControlToken();
+    if (!token) return;
 
     setIsRunningCycle(true);
     try {
@@ -236,9 +270,19 @@ export function LiveDashboard() {
               <RefreshCw size={18} />
               {isSyncing ? "Syncing" : "Sync Now"}
             </button>
-            <button className="primary" onClick={() => void runAgentCycle()} disabled={isRunningCycle || !connected}>
+            <label className={connected ? "toggleControl" : "toggleControl disabled"}>
+              <input
+                type="checkbox"
+                checked={status.bot.auto_trade_enabled}
+                onChange={(event) => void setTradingEnabled(event.target.checked)}
+                disabled={!connected || isChangingTrading}
+              />
+              <span className="toggleTrack"><span /></span>
+              <strong>{isChangingTrading ? "Updating" : "Auto trading"}</strong>
+            </label>
+            <button className="primary" onClick={() => void runAgentCycle()} disabled={isRunningCycle || !connected || !status.bot.auto_trade_enabled}>
               <Bot size={18} />
-              {isRunningCycle ? "Running" : "Run Agent"}
+              {isRunningCycle ? "Running" : "Run Once"}
             </button>
           </div>
         </header>

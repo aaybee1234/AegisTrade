@@ -59,6 +59,34 @@ async function statusWithDevelopmentFallback() {
   }
 }
 
+mt5Router.post("/control", async (req, res) => {
+  const expectedToken = process.env.SINGLE_USER_CONTROL_TOKEN;
+  const suppliedToken = req.header("x-aegis-control-token");
+  if (!expectedToken) {
+    res.status(503).json({ error: "Single-user control endpoint is disabled." });
+    return;
+  }
+  if (suppliedToken !== expectedToken) {
+    res.status(401).json({ error: "Invalid control token." });
+    return;
+  }
+  if (typeof req.body?.enabled !== "boolean") {
+    res.status(400).json({ error: "enabled must be a boolean." });
+    return;
+  }
+
+  try {
+    const commandId = await queueCommand({ type: "set_auto_trade", enabled: req.body.enabled });
+    res.status(202).json({
+      ok: true,
+      queued: true,
+      auto_trade_enabled: req.body.enabled,
+      command_id: commandId
+    });
+  } catch (error) {
+    res.status(503).json({ ok: false, error: error instanceof Error ? error.message : "Trading control unavailable" });
+  }
+});
 mt5Router.post("/cycle", async (req, res) => {
   const expectedToken = process.env.SINGLE_USER_CONTROL_TOKEN;
   const suppliedToken = req.header("x-aegis-control-token");

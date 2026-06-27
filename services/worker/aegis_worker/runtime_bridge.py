@@ -19,6 +19,17 @@ def write_json(name: str, payload: dict[str, Any]) -> None:
     temporary.replace(destination)
 
 
+def read_control() -> dict[str, Any]:
+    control_path = ACCOUNT_DIR / "control.json"
+    if not control_path.exists():
+        return {"auto_trade_enabled": settings.auto_trade_enabled}
+    try:
+        payload = json.loads(control_path.read_text(encoding="utf-8"))
+        return {"auto_trade_enabled": bool(payload.get("auto_trade_enabled", False))}
+    except (OSError, ValueError, TypeError):
+        return {"auto_trade_enabled": False}
+
+
 def process_commands(client: DemoMt5Client) -> list[dict[str, Any]]:
     COMMANDS_DIR.mkdir(parents=True, exist_ok=True)
     results = []
@@ -29,7 +40,11 @@ def process_commands(client: DemoMt5Client) -> list[dict[str, Any]]:
             if command_type == "close_position":
                 result = client.close_position(int(command["ticket"]))
             elif command_type == "run_cycle":
-                result = run_cycle()
+                result = run_cycle(execute=read_control()["auto_trade_enabled"])
+            elif command_type == "set_auto_trade":
+                enabled = bool(command.get("enabled", False))
+                write_json("control.json", {"auto_trade_enabled": enabled})
+                result = {"ok": True, "auto_trade_enabled": enabled}
             else:
                 result = {"ok": False, "error": f"Unknown command: {command_type}"}
             results.append({"id": command_file.stem, "result": result})

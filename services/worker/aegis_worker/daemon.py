@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from aegis_worker.advisory_json import build_advisory
 from aegis_worker.config import settings
 from aegis_worker.mt5.client import DemoMt5Client
-from aegis_worker.runtime_bridge import process_commands, write_json
+from aegis_worker.runtime_bridge import process_commands, read_control, write_json
 from aegis_worker.status_json import build_status
 from aegis_worker.trading_cycle import run_cycle
 
@@ -18,8 +18,10 @@ def main() -> None:
         try:
             client = DemoMt5Client()
             commands = process_commands(client)
-            cycle = run_cycle() if settings.auto_trade_enabled else None
+            auto_trade_enabled = read_control()["auto_trade_enabled"]
+            cycle = run_cycle(execute=True) if auto_trade_enabled else None
             status = build_status(client)
+            status["bot"]["auto_trade_enabled"] = auto_trade_enabled
             status["bridge"] = {
                 "account_id": settings.mt5_account_id,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
