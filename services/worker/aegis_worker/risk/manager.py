@@ -22,11 +22,23 @@ class RiskManager:
         if daily_stats and int(daily_stats.get("closed", 0)) >= settings.max_daily_trades:
             return {"approved": False, "reason": "Daily completed-trade limit reached."}
 
+        if daily_stats and int(daily_stats.get("opened", 0)) >= settings.max_daily_trades:
+            return {"approved": False, "reason": "Daily opened-trade limit reached."}
+
+        if daily_stats and float(daily_stats.get("net_profit", 0)) <= -settings.max_daily_loss_usd:
+            return {"approved": False, "reason": "Daily loss limit reached. Bot is locked until the next UTC day."}
+
         if signal.action == "HOLD":
             return {"approved": False, "reason": signal.reason}
 
         if not getattr(signal, "approved_for_risk_check", True):
             return {"approved": False, "reason": "AI review did not approve risk check handoff."}
+
+        if getattr(signal, "news_risk", "LOW") not in {"LOW", "MEDIUM"}:
+            return {"approved": False, "reason": "AI/news review vetoed this setup."}
+
+        if int(getattr(signal, "research_source_count", 0)) < 2:
+            return {"approved": False, "reason": "Research source coverage is too low for automatic execution."}
 
         if signal.symbol not in self.allowed_symbols:
             return {"approved": False, "reason": "Symbol is not allowed."}

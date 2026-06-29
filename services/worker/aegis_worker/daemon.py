@@ -14,23 +14,29 @@ ADVISORY_INTERVAL_SECONDS = 300
 
 def main() -> None:
     last_advisory = 0.0
+    last_auto_cycle = 0.0
     while True:
         try:
             client = DemoMt5Client()
             commands = process_commands(client)
             auto_trade_enabled = read_control()["auto_trade_enabled"]
-            cycle = run_cycle(execute=True) if auto_trade_enabled else None
+            now = time.monotonic()
+            cycle = None
+            if auto_trade_enabled and now - last_auto_cycle >= settings.auto_scan_interval_seconds:
+                cycle = run_cycle(execute=True)
+                last_auto_cycle = now
+
             status = build_status(client)
             status["bot"]["auto_trade_enabled"] = auto_trade_enabled
             status["bridge"] = {
                 "account_id": settings.mt5_account_id,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "commands_processed": len(commands),
-                "cycle_ok": cycle.get("ok") if cycle else None
+                "cycle_ok": cycle.get("ok") if cycle else None,
+                "next_auto_scan_in_seconds": max(0, int(settings.auto_scan_interval_seconds - (now - last_auto_cycle))) if auto_trade_enabled else None
             }
             write_json("status.json", status)
 
-            now = time.monotonic()
             if now - last_advisory >= ADVISORY_INTERVAL_SECONDS:
                 write_json("advisory.json", build_advisory(client))
                 last_advisory = now

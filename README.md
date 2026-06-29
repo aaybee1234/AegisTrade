@@ -208,7 +208,7 @@ python -m aegis_worker
 - `services/worker/aegis_worker/risk/manager.py`: deterministic approval gate with AI handoff validation.
 - `services/worker/aegis_worker/mt5/client.py`: placeholder MT5 boundary for demo account integration.
 
-If `OPENAI_API_KEY` is not set, the AI review agent returns a local fallback review so the worker can still run in demo scaffolding mode.
+If `OPENAI_API_KEY` is missing or the review call fails, the worker still reports a local explanation but automatic execution is vetoed by default (`AI_REVIEW_REQUIRED=true`).
 
 
 ## Current Progress Note

@@ -122,6 +122,41 @@ class DemoMt5Client:
             return len(positions) > 0
         return any(position["symbol"] == symbol for position in positions)
 
+    def has_bot_entry_since(self, symbol: str, timestamp: int) -> bool:
+        if not self.connected or self.mt5 is None:
+            return False
+
+        from datetime import datetime, timezone
+
+        start = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        now = datetime.now(timezone.utc)
+        deals = self.mt5.history_deals_get(start, now) or []
+        return any(
+            getattr(deal, "symbol", None) == symbol
+            and int(getattr(deal, "magic", 0)) == 260625
+            and getattr(deal, "entry", None) == self.mt5.DEAL_ENTRY_IN
+            for deal in deals
+        )
+
+    def latest_bot_entry_age_seconds(self, symbol: str) -> int | None:
+        if not self.connected or self.mt5 is None:
+            return None
+
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        deals = self.mt5.history_deals_get(now - timedelta(days=1), now) or []
+        entries = [
+            int(getattr(deal, "time", 0))
+            for deal in deals
+            if getattr(deal, "symbol", None) == symbol
+            and int(getattr(deal, "magic", 0)) == 260625
+            and getattr(deal, "entry", None) == self.mt5.DEAL_ENTRY_IN
+        ]
+        if not entries:
+            return None
+        return max(0, int(now.timestamp()) - max(entries))
+
     def symbol_info(self, symbol: str) -> dict[str, Any]:
         if not self.connected or self.mt5 is None:
             return {"symbol": symbol, "point": 0.01 if symbol.startswith("BTC") or symbol.startswith("XAU") else 0.00001, "spread": 0}
@@ -354,8 +389,12 @@ class DemoMt5Client:
         tick_size = float(getattr(symbol_info, "trade_tick_size", point) or point)
         tick_value = abs(float(getattr(symbol_info, "trade_tick_value", 0) or 0))
         profit_per_price_unit = (tick_value / tick_size) * volume if tick_size > 0 else 0
+        desired_profit_usd = max(
+            settings.target_profit_per_trade_usd,
+            estimated_loss * settings.minimum_risk_reward
+        )
         desired_tp_distance = (
-            settings.target_profit_per_trade_usd / profit_per_price_unit
+            desired_profit_usd / profit_per_price_unit
             if profit_per_price_unit > 0 else int(order["take_profit_pips"]) * point
         )
         tp_distance = max(desired_tp_distance, (min_stop_points + 50) * point)
@@ -363,6 +402,16 @@ class DemoMt5Client:
         sl = round(sl, digits)
         tp = round(tp, digits)
         estimated_profit = abs(self._estimated_profit(order_type, symbol, volume, price, tp))
+        if estimated_loss <= 0 or estimated_profit < estimated_loss * settings.minimum_risk_reward:
+            return {
+                "accepted": False,
+                "mode": "risk-veto",
+                "ticket": None,
+                "comment": "Broker pricing cannot meet the configured minimum risk/reward.",
+                "order": order,
+                "estimated_loss_usd": round(estimated_loss, 2),
+                "estimated_profit_usd": round(estimated_profit, 2)
+            }
 
         request = {
             "action": self.mt5.TRADE_ACTION_DEAL,

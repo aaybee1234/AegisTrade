@@ -42,12 +42,12 @@ Demo orders have been successfully placed through MT5:
 The worker now includes an MVP safety gate:
 
 ```text
-MAX_OPEN_TRADES = 2
+MAX_OPEN_TRADES = 1
 ```
 
 The worker behavior is:
 
-- If two positions are open, do not place more trades.
+- If one position is open, do not place another trade.
 - If a symbol already has an open position, skip that symbol.
 - Reject live accounts.
 - Reject symbols outside the allowlist.
@@ -297,7 +297,7 @@ This is expected and safer than trading through expensive spreads.
 
 ### OpenAI Rate Limits
 
-The AI review agent can hit API rate limits. When that happens, it falls back locally and does not block the worker.
+The AI review agent can hit API rate limits. When that happens, it returns an explanation but automatic execution is vetoed by default.
 
 ## What Is Not Built Yet
 
@@ -544,3 +544,25 @@ Next milestones:
 - integrate database-backed users and encrypted account credentials
 - allocate isolated terminal sessions per active user
 - add subscription entitlements only after the trading core is validated
+## 2026-06-30: Strategy and Research Safety Upgrade
+
+Implemented locally and validated:
+
+- true EMA20/EMA50 trend checks, RSI, ATR, breakout confirmation, completed candles, volume, and spread filters
+- five-minute scan/cooldown and one-entry-per-completed-candle protection
+- one open position, 10 trades/day, $0.50 maximum estimated risk, $0.75 target, 1.5R minimum, and $2 daily-loss lock defaults
+- official Federal Reserve and EIA RSS context plus CoinGecko trending-project discovery
+- AI structured review with news-risk classification, source count, explanation, ranking, and veto reasons
+- fail-closed execution when AI review or minimum research coverage is unavailable
+- dashboard visibility for strategy indicators, news risk, summaries, and research sources
+- unit tests proving AI cannot rewrite execution parameters and high news risk is vetoed
+
+Decision authority remains:
+
+```text
+Indicators propose -> research informs -> AI may veto -> deterministic risk approves -> MT5 demo executor acts
+```
+
+Research is untrusted advisory input. It cannot choose a symbol, create a BUY/SELL signal, alter lot size/stops/target, bypass daily limits, or enable the bot. Automatic trading remains disabled until explicit demo observation approval.
+
+No profit rate or win rate is guaranteed. The next required milestone is an append-only decision/outcome journal followed by forward testing over a statistically meaningful demo sample.

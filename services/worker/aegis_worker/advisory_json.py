@@ -4,6 +4,7 @@ from typing import Any
 from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
 from aegis_worker.mt5.client import DemoMt5Client
+from aegis_worker.research.market_context import context_for_symbol
 from aegis_worker.risk.manager import RiskManager
 
 SYMBOLS = ["XAUUSDm", "EURUSDm", "BTCUSDm"]
@@ -23,6 +24,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
         try:
             candles = active_client.candles(symbol=symbol, timeframe="M5", count=200)
             symbol_info = active_client.symbol_info(symbol)
+            research = context_for_symbol(symbol)
             signal = build_signal(symbol=symbol, candles=candles, symbol_info=symbol_info)
             reviewed = ai_review_agent.review(
                 signal=signal,
@@ -31,7 +33,8 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
                     "daily": daily,
                     "open_positions": positions,
                     "symbol_info": symbol_info,
-                    "latest_candle": candles[-1] if candles else None,
+                    "latest_completed_candle": candles[-2] if len(candles) >= 2 else None,
+                    "research": research,
                     "mode": "demo-only-read-only-advisory"
                 }
             )
@@ -42,9 +45,10 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
             if not risk.get("approved"):
                 veto_reasons.append(str(risk.get("reason")))
 
+            rank_score = round(float(reviewed.confidence) * (0 if veto_reasons else 100), 2)
             ranked.append({
                 "symbol": symbol,
-                "rank_score": round(float(reviewed.confidence) * (0 if veto_reasons else 100), 2),
+                "rank_score": rank_score,
                 "action": reviewed.action,
                 "confidence": reviewed.confidence,
                 "can_trade_now": len(veto_reasons) == 0,
@@ -53,7 +57,15 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
                 "warnings": reviewed.warnings,
                 "open_position_count": len(symbol_positions),
                 "stop_loss_points": reviewed.stop_loss_pips,
-                "take_profit_points": reviewed.take_profit_pips
+                "take_profit_points": reviewed.take_profit_pips,
+                "strategy": getattr(signal, "strategy", "unknown"),
+                "indicators": getattr(signal, "indicators", {}),
+                "news_risk": reviewed.news_risk,
+                "news_summary": reviewed.news_summary,
+                "research_source_count": reviewed.research_source_count,
+                "research_errors": research.get("errors", []),
+                "headlines": research.get("headlines", [])[:3],
+                "crypto_trending": research.get("crypto_trending", [])[:5]
             })
         except Exception as error:
             ranked.append({
@@ -67,7 +79,15 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
                 "warnings": [],
                 "open_position_count": len(symbol_positions),
                 "stop_loss_points": 0,
-                "take_profit_points": 0
+                "take_profit_points": 0,
+                "strategy": "unavailable",
+                "indicators": {},
+                "news_risk": "UNKNOWN",
+                "news_summary": "Research unavailable for this scan.",
+                "research_source_count": 0,
+                "research_errors": [str(error)],
+                "headlines": [],
+                "crypto_trending": []
             })
 
     ranked.sort(key=lambda item: item["rank_score"], reverse=True)

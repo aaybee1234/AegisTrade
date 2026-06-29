@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from aegis_worker.strategy_config import config_for_symbol
@@ -14,26 +14,49 @@ class TradeSignal:
     take_profit_pips: int
     reason: str
     entry_type: str = "MARKET"
+    strategy: str = "ema-rsi-breakout"
+    indicators: dict[str, float] = field(default_factory=dict)
 
     def model_dump(self) -> dict[str, Any]:
         return asdict(self)
 
 
 def average(values: list[float]) -> float:
-    return sum(values) / len(values)
+    return sum(values) / len(values) if values else 0
+
+
+def ema(values: list[float], period: int) -> float:
+    if len(values) < period:
+        return average(values)
+    multiplier = 2 / (period + 1)
+    result = average(values[:period])
+    for value in values[period:]:
+        result = (value - result) * multiplier + result
+    return result
+
+
+def rsi(values: list[float], period: int = 14) -> float:
+    if len(values) < period + 1:
+        return 50
+    changes = [current - previous for previous, current in zip(values[-period - 1:-1], values[-period:])]
+    gains = average([max(change, 0) for change in changes])
+    losses = average([abs(min(change, 0)) for change in changes])
+    if losses == 0:
+        return 100
+    relative_strength = gains / losses
+    return 100 - (100 / (1 + relative_strength))
 
 
 def calculate_atr_points(candles: list[dict[str, Any]], point: float, period: int = 14) -> int:
     if len(candles) < period + 1 or point <= 0:
         return 0
-
-    ranges: list[float] = []
-    recent = candles[-period:]
-    for candle in recent:
+    ranges = []
+    recent = candles[-period - 1:]
+    for previous, candle in zip(recent[:-1], recent[1:]):
         high = float(candle.get("high", candle["close"]))
         low = float(candle.get("low", candle["close"]))
-        ranges.append(max(high - low, 0))
-
+        previous_close = float(previous["close"])
+        ranges.append(max(high - low, abs(high - previous_close), abs(low - previous_close)))
     return int(average(ranges) / point)
 
 
@@ -41,22 +64,43 @@ def clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
 
 
+def hold_signal(symbol: str, reason: str, confidence: float = 0.2) -> TradeSignal:
+    config = config_for_symbol(symbol)
+    return TradeSignal(
+        symbol=symbol,
+        action="HOLD",
+        confidence=confidence,
+        lot_size=config.lot_size,
+        stop_loss_pips=0,
+        take_profit_pips=0,
+        reason=reason
+    )
+
+
 def build_signal(symbol: str, candles: list[dict[str, Any]], symbol_info: dict[str, Any] | None = None) -> TradeSignal:
     config = config_for_symbol(symbol)
-    if len(candles) < 50:
-        return TradeSignal(
-            symbol=symbol,
-            action="HOLD",
-            confidence=0,
-            lot_size=config.lot_size,
-            stop_loss_pips=0,
-            take_profit_pips=0,
-            reason="Not enough candle history."
-        )
+    completed = candles[:-1]
+    if len(completed) < 60:
+        return hold_signal(symbol, "Not enough completed candle history.", 0)
 
     point = float((symbol_info or {}).get("point", 0.00001))
     spread_points = int((symbol_info or {}).get("spread", 0))
-    atr_points = calculate_atr_points(candles, point)
+    if spread_points > config.max_spread_points:
+        return hold_signal(symbol, f"Spread is too high for {symbol}: {spread_points} points.")
+
+    closes = [float(candle["close"]) for candle in completed]
+    volumes = [float(candle.get("tick_volume", 0)) for candle in completed]
+    fast_ema = ema(closes[-80:], 20)
+    slow_ema = ema(closes[-100:], 50)
+    previous_fast_ema = ema(closes[-81:-1], 20)
+    momentum_rsi = rsi(closes, 14)
+    last_close = closes[-1]
+    breakout_high = max(float(candle.get("high", candle["close"])) for candle in completed[-7:-1])
+    breakout_low = min(float(candle.get("low", candle["close"])) for candle in completed[-7:-1])
+    average_volume = average(volumes[-21:-1])
+    volume_ratio = volumes[-1] / average_volume if average_volume > 0 else 1
+
+    atr_points = calculate_atr_points(completed, point)
     stop_points = clamp(
         int(max(atr_points * config.atr_multiplier, config.min_stop_points)),
         config.min_stop_points,
@@ -64,56 +108,54 @@ def build_signal(symbol: str, candles: list[dict[str, Any]], symbol_info: dict[s
     )
     take_profit_points = int(stop_points * config.risk_reward)
 
-    if spread_points > config.max_spread_points:
-        return TradeSignal(
-            symbol=symbol,
-            action="HOLD",
-            confidence=0.2,
-            lot_size=config.lot_size,
-            stop_loss_pips=0,
-            take_profit_pips=0,
-            reason=f"Spread is too high for {symbol}: {spread_points} points."
-        )
+    buy_checks = {
+        "trend": fast_ema > slow_ema,
+        "slope": fast_ema > previous_fast_ema,
+        "momentum": 52 <= momentum_rsi <= 68,
+        "breakout": last_close > breakout_high,
+        "volume": volume_ratio >= 0.9
+    }
+    sell_checks = {
+        "trend": fast_ema < slow_ema,
+        "slope": fast_ema < previous_fast_ema,
+        "momentum": 32 <= momentum_rsi <= 48,
+        "breakout": last_close < breakout_low,
+        "volume": volume_ratio >= 0.9
+    }
+    buy_score = sum(buy_checks.values())
+    sell_score = sum(sell_checks.values())
+    indicators = {
+        "ema20": round(fast_ema, 8),
+        "ema50": round(slow_ema, 8),
+        "rsi14": round(momentum_rsi, 2),
+        "atr_points": float(atr_points),
+        "spread_points": float(spread_points),
+        "volume_ratio": round(volume_ratio, 2)
+    }
 
-    closes = [float(candle["close"]) for candle in candles]
-    ema20 = average(closes[-20:])
-    ema50 = average(closes[-50:])
-    last_close = closes[-1]
+    action = "HOLD"
+    score = max(buy_score, sell_score)
+    if buy_score >= 4 and buy_score > sell_score:
+        action = "BUY"
+    elif sell_score >= 4 and sell_score > buy_score:
+        action = "SELL"
 
-    if ema20 > ema50 and last_close > ema20:
-        return TradeSignal(
-            symbol=symbol,
-            action="BUY",
-            confidence=0.68,
-            lot_size=config.lot_size,
-            stop_loss_pips=stop_points,
-            take_profit_pips=take_profit_points,
-            reason=(
-                f"Short trend is above long trend. ATR stop={stop_points} points, "
-                f"target={take_profit_points} points, spread={spread_points}."
-            )
-        )
+    if action == "HOLD":
+        signal = hold_signal(symbol, f"No aligned setup: buy score {buy_score}/5, sell score {sell_score}/5.", 0.45)
+        signal.indicators = indicators
+        return signal
 
-    if ema20 < ema50 and last_close < ema20:
-        return TradeSignal(
-            symbol=symbol,
-            action="SELL",
-            confidence=0.68,
-            lot_size=config.lot_size,
-            stop_loss_pips=stop_points,
-            take_profit_pips=take_profit_points,
-            reason=(
-                f"Short trend is below long trend. ATR stop={stop_points} points, "
-                f"target={take_profit_points} points, spread={spread_points}."
-            )
-        )
-
+    confidence = min(0.62 + score * 0.025, 0.75)
     return TradeSignal(
         symbol=symbol,
-        action="HOLD",
-        confidence=0.45,
+        action=action,
+        confidence=confidence,
         lot_size=config.lot_size,
-        stop_loss_pips=0,
-        take_profit_pips=0,
-        reason="Trend conditions are mixed."
+        stop_loss_pips=stop_points,
+        take_profit_pips=take_profit_points,
+        reason=(
+            f"{action} setup passed {score}/5 checks. EMA trend and slope align, RSI={momentum_rsi:.1f}, "
+            f"volume={volume_ratio:.2f}x, ATR stop={stop_points}, target={take_profit_points}."
+        ),
+        indicators=indicators
     )

@@ -61,6 +61,12 @@ type Mt5Status = {
     max_daily_trades: number;
     max_risk_per_trade_usd: number;
     target_profit_per_trade_usd: number;
+    max_daily_loss_usd: number;
+    minimum_risk_reward: number;
+    trade_cooldown_seconds: number;
+    auto_scan_interval_seconds: number;
+    news_refresh_seconds: number;
+    ai_review_required: boolean;
   };
 };
 
@@ -75,6 +81,13 @@ type Setup = {
   warnings: string[];
   stop_loss_points: number;
   take_profit_points: number;
+  strategy?: string;
+  indicators?: Record<string, number>;
+  news_risk?: string;
+  news_summary?: string;
+  research_source_count?: number;
+  headlines?: Array<{ title?: string; source?: string; published_at?: string }>;
+  crypto_trending?: Array<{ name?: string; symbol?: string; market_cap_rank?: number }>;
 };
 
 type Advisory = {
@@ -86,18 +99,18 @@ const EMPTY_STATUS: Mt5Status = {
   account: { connected: false, is_demo: true, connection_error: "Waiting for first sync." },
   positions: [],
   summary: { open_positions: 0, floating_pl: 0 },
-  daily: { opened: 0, closed: 0, wins: 0, losses: 0, win_rate: 0, net_profit: 0, remaining: 100 },
-  bot: { auto_trade_enabled: false, max_open_trades: 2, max_daily_trades: 100, max_risk_per_trade_usd: 10, target_profit_per_trade_usd: 0.5 }
+  daily: { opened: 0, closed: 0, wins: 0, losses: 0, win_rate: 0, net_profit: 0, remaining: 10 },
+  bot: { auto_trade_enabled: false, max_open_trades: 1, max_daily_trades: 10, max_risk_per_trade_usd: 0.5, target_profit_per_trade_usd: 0.75, max_daily_loss_usd: 2, minimum_risk_reward: 1.5, trade_cooldown_seconds: 300, auto_scan_interval_seconds: 300, news_refresh_seconds: 900, ai_review_required: true }
 };
 
 const rules = [
   "Demo account required",
-  "Maximum 2 simultaneous open trades",
+  "Maximum 1 simultaneous open trade",
   "Skip duplicate symbol positions",
+  "Cooldown after each bot entry",
   "Spread filter before entry",
-  "Maximum $10 estimated loss per trade",
-  "$0.50 target profit with broker minimum-distance checks",
-  "Maximum 100 completed trades per UTC day",
+  "Broker-calculated dollar risk before every order",
+  "Daily loss kill switch",
   "AI review cannot bypass risk rules"
 ];
 
@@ -323,17 +336,17 @@ export function LiveDashboard() {
           <div className="metric">
             <span>Bot status</span>
             <strong className={status.bot.auto_trade_enabled ? "positive" : "paused"}><CirclePause size={18} /> {status.bot.auto_trade_enabled ? "Automatic" : "Advisory"}</strong>
-            <small>{money(status.bot.max_risk_per_trade_usd)} max risk / {money(status.bot.target_profit_per_trade_usd)} target</small>
+            <small>{money(status.bot.max_risk_per_trade_usd)} max loss / {status.bot.minimum_risk_reward.toFixed(1)}R minimum</small>
           </div>
           <div className="metric liveMetric">
             <span>Today</span>
             <strong>{status.daily.closed} / {status.bot.max_daily_trades}</strong>
-            <small>{status.daily.remaining} completed trades remaining</small>
+            <small>{money(status.bot.max_daily_loss_usd)} daily loss lock</small>
           </div>
           <div className="metric liveMetric">
             <span>Measured win rate</span>
             <strong>{status.daily.win_rate.toFixed(1)}%</strong>
-            <small>{status.daily.wins} wins / {status.daily.losses} losses</small>
+            <small>{status.daily.wins} wins / {status.daily.losses} losses, {money(status.daily.net_profit, currency)} net</small>
           </div>
         </section>
 
@@ -419,12 +432,16 @@ export function LiveDashboard() {
                     <div className="signalMain">
                       <strong>{setup.symbol}</strong>
                       <span>{setup.explanation}</span>
+                      <span>News risk: {setup.news_risk ?? "UNKNOWN"} - {setup.news_summary ?? "No AI/news summary yet."}</span>
+                      {setup.indicators ? <span>RSI {setup.indicators.rsi14 ?? "n/a"} / spread {setup.indicators.spread_points ?? "n/a"} / ATR {setup.indicators.atr_points ?? "n/a"}</span> : null}
+                      {setup.headlines && setup.headlines.length > 0 ? <span>Research: {setup.headlines.map((headline) => headline.source).filter(Boolean).join(", ")}</span> : null}
                       {setup.veto_reasons.length > 0 ? <span>Veto: {setup.veto_reasons.join(" ")}</span> : null}
                     </div>
                     <div className="signalMeta">
                       <b className={setup.can_trade_now ? "buy" : "hold"}>{setup.action}</b>
                       <span>{setup.rank_score}</span>
                       <small>{setup.can_trade_now ? "Ranked setup" : "Vetoed"}</small>
+                      <small>{setup.research_source_count ?? 0} sources</small>
                     </div>
                   </article>
                 ))
@@ -441,7 +458,7 @@ export function LiveDashboard() {
               <TrendingUp size={19} />
             </div>
             <p className="panelText">
-              The model reviews strategy signals and writes explanations. Hard-coded risk checks still decide whether a demo order is allowed.
+              The model reviews strategy signals and writes explanations. Hard-coded risk checks still decide whether a demo order is allowed. News and project research can only veto or reduce confidence; it cannot create trades.
             </p>
             <div className="inlineNotice">
               <AlertTriangle size={16} />

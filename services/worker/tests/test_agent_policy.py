@@ -1,4 +1,4 @@
-﻿import json
+import json
 import unittest
 from types import SimpleNamespace
 
@@ -33,7 +33,7 @@ class AgentPolicyTests(unittest.TestCase):
             })
         }
 
-        reviewed = AiReviewAgent()._parse_review(body, signal)
+        reviewed = AiReviewAgent()._parse_review(body, signal, {"research": {"successful_sources": 2}})
 
         self.assertEqual(reviewed.symbol, signal.symbol)
         self.assertEqual(reviewed.action, signal.action)
@@ -42,6 +42,27 @@ class AgentPolicyTests(unittest.TestCase):
         self.assertEqual(reviewed.take_profit_pips, signal.take_profit_pips)
         self.assertEqual(reviewed.confidence, signal.confidence)
 
+    def test_ai_fallback_reports_sources_but_still_vetoes(self) -> None:
+        signal = SimpleNamespace(
+            symbol="EURUSDm",
+            action="BUY",
+            confidence=0.68,
+            lot_size=0.01,
+            entry_type="MARKET",
+            stop_loss_pips=200,
+            take_profit_pips=400,
+            reason="Deterministic trend signal."
+        )
+
+        reviewed = AiReviewAgent()._fallback_review(
+            signal,
+            "rate limited",
+            {"research": {"successful_sources": 3}}
+        )
+
+        self.assertFalse(reviewed.approved_for_risk_check)
+        self.assertEqual(reviewed.research_source_count, 3)
+        self.assertEqual(reviewed.news_risk, "UNKNOWN")
     def test_daily_limit_is_a_hard_veto(self) -> None:
         signal = SimpleNamespace(
             symbol="EURUSDm",
@@ -59,11 +80,34 @@ class AgentPolicyTests(unittest.TestCase):
             "trade_expert": True
         }
 
-        result = RiskManager().validate(signal, account, {"closed": 100})
+        result = RiskManager().validate(signal, account, {"closed": 10})
 
         self.assertFalse(result["approved"])
         self.assertIn("Daily", result["reason"])
 
+    def test_high_news_risk_is_a_hard_veto(self) -> None:
+        signal = SimpleNamespace(
+            symbol="BTCUSDm",
+            action="BUY",
+            confidence=0.70,
+            lot_size=0.01,
+            stop_loss_pips=200,
+            take_profit_pips=400,
+            approved_for_risk_check=True,
+            news_risk="HIGH",
+            research_source_count=2
+        )
+        account = {
+            "connected": True,
+            "is_demo": True,
+            "trade_allowed": True,
+            "trade_expert": True
+        }
+
+        result = RiskManager().validate(signal, account)
+
+        self.assertFalse(result["approved"])
+        self.assertIn("news", result["reason"].lower())
     def test_real_account_is_always_rejected(self) -> None:
         signal = SimpleNamespace(action="HOLD", reason="No setup")
         account = {"connected": True, "is_demo": False}

@@ -19,7 +19,13 @@ def build_status(client: DemoMt5Client | None = None) -> dict[str, Any]:
             "max_open_trades": settings.max_open_trades,
             "max_daily_trades": settings.max_daily_trades,
             "max_risk_per_trade_usd": settings.max_risk_per_trade_usd,
-            "target_profit_per_trade_usd": settings.target_profit_per_trade_usd
+            "target_profit_per_trade_usd": settings.target_profit_per_trade_usd,
+            "max_daily_loss_usd": settings.max_daily_loss_usd,
+            "minimum_risk_reward": settings.minimum_risk_reward,
+            "trade_cooldown_seconds": settings.trade_cooldown_seconds,
+            "auto_scan_interval_seconds": settings.auto_scan_interval_seconds,
+            "news_refresh_seconds": settings.news_refresh_seconds,
+            "ai_review_required": settings.ai_review_required
         },
         "summary": {
             "open_positions": len(positions),
