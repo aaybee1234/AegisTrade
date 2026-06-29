@@ -1,4 +1,5 @@
 import json
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -7,6 +8,11 @@ from typing import Any
 
 from aegis_worker.ai_telemetry import record_ai_activity
 from aegis_worker.config import settings
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - fallback for minimal local environments
+    certifi = None
 
 
 @dataclass
@@ -27,6 +33,12 @@ class ReviewedSignal:
 
     def model_dump(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _ssl_context() -> ssl.SSLContext | None:
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 class AiReviewAgent:
@@ -116,7 +128,7 @@ class AiReviewAgent:
                 },
                 method="POST"
             )
-            with urllib.request.urlopen(request, timeout=25) as response:
+            with urllib.request.urlopen(request, timeout=25, context=_ssl_context()) as response:
                 request_id = response.headers.get("x-request-id")
                 body = json.loads(response.read().decode("utf-8"))
             response_id = body.get("id")
