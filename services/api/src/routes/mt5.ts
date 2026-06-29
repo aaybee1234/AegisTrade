@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -13,7 +13,37 @@ const routeDir = path.dirname(fileURLToPath(import.meta.url));
 const apiRoot = path.resolve(routeDir, "..", "..");
 const projectRoot = path.resolve(apiRoot, "..", "..");
 const workerCwd = path.join(projectRoot, "services", "worker");
+
 const defaultAccountId = process.env.SINGLE_USER_ACCOUNT_ID ?? "primary";
+type LogStream = "app" | "trade" | "ai";
+const logStreams = new Set<LogStream>(["app", "trade", "ai"]);
+
+function accountLogsDir(accountId = defaultAccountId) {
+  return path.join(accountRuntimeDir(accountId), "logs");
+}
+
+function parseLimit(value: unknown) {
+  const parsed = Number(value ?? 100);
+  if (!Number.isFinite(parsed)) return 100;
+  return Math.max(1, Math.min(500, Math.trunc(parsed)));
+}
+
+async function appendApiLog(event: Record<string, unknown>, accountId = defaultAccountId) {
+  const logsDir = accountLogsDir(accountId);
+  await mkdir(logsDir, { recursive: true });
+  const payload = { ts: new Date().toISOString(), stream: "app", source: "api", ...event };
+  await appendFile(path.join(logsDir, "app.jsonl"), JSON.stringify(payload) + "\n", "utf8");
+}
+
+async function readLogStream(stream: LogStream, limit: number, accountId = defaultAccountId) {
+  const content = await readFile(path.join(accountLogsDir(accountId), `${stream}.jsonl`), "utf8");
+  return content
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-limit)
+    .map((line) => JSON.parse(line));
+}
+
 
 function safeAccountId(value: string) {
   if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
@@ -77,6 +107,7 @@ mt5Router.post("/control", async (req, res) => {
 
   try {
     const commandId = await queueCommand({ type: "set_auto_trade", enabled: req.body.enabled });
+    await appendApiLog({ event: "control_queued", command_id: commandId, auto_trade_enabled: req.body.enabled });
     res.status(202).json({
       ok: true,
       queued: true,
@@ -100,8 +131,10 @@ mt5Router.post("/cycle", async (req, res) => {
   }
 
   try {
-    const commandId = await queueCommand({ type: "run_cycle" });
-    res.status(202).json({ ok: true, queued: true, command_id: commandId });
+    const forceExecute = req.body?.force_execute === true;
+    const commandId = await queueCommand({ type: "run_cycle", force_execute: forceExecute });
+    await appendApiLog({ event: "cycle_queued", command_id: commandId, forced_test_cycle: forceExecute });
+    res.status(202).json({ ok: true, queued: true, command_id: commandId, forced_test_cycle: forceExecute });
   } catch (error) {
     res.status(503).json({ ok: false, error: error instanceof Error ? error.message : "Trading cycle unavailable" });
   }
@@ -157,6 +190,36 @@ mt5Router.get("/advisory", async (_req, res) => {
   }
 });
 
+
+mt5Router.get("/logs", async (req, res) => {
+  const limit = parseLimit(req.query.limit);
+  const requested = typeof req.query.stream === "string" ? req.query.stream : "all";
+  try {
+    if (requested !== "all") {
+      if (!logStreams.has(requested as LogStream)) {
+        res.status(400).json({ error: "stream must be app, trade, ai, or all" });
+        return;
+      }
+      const entries = await readLogStream(requested as LogStream, limit);
+      res.json({ stream: requested, entries });
+      return;
+    }
+
+    const groups = await Promise.allSettled([
+      readLogStream("app", limit),
+      readLogStream("trade", limit),
+      readLogStream("ai", limit)
+    ]);
+    const entries = groups
+      .flatMap((group) => group.status === "fulfilled" ? group.value : [])
+      .sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
+      .slice(-limit);
+    res.json({ stream: "all", entries });
+  } catch (error) {
+    res.status(503).json({ entries: [], error: error instanceof Error ? error.message : "Logs unavailable" });
+  }
+});
+
 mt5Router.get("/ai-activity", async (_req, res) => {
   try {
     res.json(await readRuntimeJson("ai_activity.json"));
@@ -190,6 +253,7 @@ mt5Router.get("/accounts/:id/status", async (req, res) => {
 mt5Router.delete("/positions/:ticket", async (req, res) => {
   try {
     const commandId = await queueCommand({ type: "close_position", ticket: req.params.ticket });
+    await appendApiLog({ event: "close_position_queued", command_id: commandId, ticket: req.params.ticket });
     res.status(202).json({ closed: false, queued: true, ticket: req.params.ticket, command_id: commandId });
   } catch (error) {
     res.status(503).json({

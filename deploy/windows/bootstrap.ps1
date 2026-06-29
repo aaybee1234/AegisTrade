@@ -196,6 +196,7 @@ function Write-EnvFile {
     "SINGLE_USER_ACCOUNT_ID=primary",
     "SINGLE_USER_CONTROL_TOKEN=$([guid]::NewGuid().ToString('N'))",
     "AUTO_TRADE_ENABLED=false",
+    "TRADING_SYMBOLS=XAUUSDm,EURUSDm,BTCUSDm",
     "WORKER_POLL_SECONDS=5",
     "MAX_OPEN_TRADES=1",
     "MAX_DAILY_TRADES=100",

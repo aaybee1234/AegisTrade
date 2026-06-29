@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis_worker.config import settings
+from aegis_worker.event_log import append_log
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ACTIVITY_PATH = PROJECT_ROOT / "runtime" / "accounts" / settings.mt5_account_id / "ai_activity.json"
@@ -53,3 +54,4 @@ def record_ai_activity(
     temporary = ACTIVITY_PATH.with_suffix(".tmp")
     temporary.write_text(json.dumps(current), encoding="utf-8")
     temporary.replace(ACTIVITY_PATH)
+    append_log("ai", {"event": "openai_review", "status": status, "symbol": symbol, "latency_ms": latency_ms, "request_id": request_id, "response_id": response_id, "response_model": response_model, "usage": usage or {}, "error": error})

@@ -25,6 +25,10 @@ def load_env_file() -> None:
 load_env_file()
 
 
+def parse_symbols(value: str) -> list[str]:
+    return [symbol.strip() for symbol in value.split(',') if symbol.strip()]
+
+
 class Settings:
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
@@ -46,6 +50,7 @@ class Settings:
     auto_scan_interval_seconds: int = int(os.getenv("AUTO_SCAN_INTERVAL_SECONDS", "300"))
     news_refresh_seconds: int = int(os.getenv("NEWS_REFRESH_SECONDS", "900"))
     ai_review_required: bool = os.getenv("AI_REVIEW_REQUIRED", "true").lower() == "true"
+    trading_symbols: list[str] = parse_symbols(os.getenv("TRADING_SYMBOLS", "XAUUSDm,EURUSDm,BTCUSDm"))
 
 
 settings = Settings()

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis_worker.config import settings
+from aegis_worker.event_log import append_log
 from aegis_worker.mt5.client import DemoMt5Client
 from aegis_worker.trading_cycle import run_cycle
 
@@ -40,7 +41,10 @@ def process_commands(client: DemoMt5Client) -> list[dict[str, Any]]:
             if command_type == "close_position":
                 result = client.close_position(int(command["ticket"]))
             elif command_type == "run_cycle":
-                result = run_cycle(execute=read_control()["auto_trade_enabled"])
+                force_execute = bool(command.get("force_execute", False))
+                result = run_cycle(execute=True if force_execute else read_control()["auto_trade_enabled"])
+                if force_execute:
+                    result["forced_test_cycle"] = True
             elif command_type == "set_auto_trade":
                 enabled = bool(command.get("enabled", False))
                 write_json("control.json", {"auto_trade_enabled": enabled})
@@ -49,8 +53,10 @@ def process_commands(client: DemoMt5Client) -> list[dict[str, Any]]:
                 result = {"ok": False, "error": f"Unknown command: {command_type}"}
             results.append({"id": command_file.stem, "result": result})
             write_json(f"command-{command_file.stem}.json", result)
+            append_log("app", {"event": "command_processed", "command_id": command_file.stem, "command_type": command_type, "result": result})
         except Exception as error:
             results.append({"id": command_file.stem, "error": str(error)})
+            append_log("app", {"event": "command_failed", "command_id": command_file.stem, "error": str(error)})
         finally:
             command_file.unlink(missing_ok=True)
     return results

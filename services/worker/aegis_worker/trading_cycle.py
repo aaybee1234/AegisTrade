@@ -3,11 +3,11 @@ from typing import Any
 from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
 from aegis_worker.config import settings
+from aegis_worker.event_log import append_log
 from aegis_worker.mt5.client import DemoMt5Client
 from aegis_worker.research.market_context import context_for_symbol
 from aegis_worker.risk.manager import RiskManager
 
-SYMBOLS = ["XAUUSDm", "EURUSDm", "BTCUSDm"]
 
 
 def _latest_completed_candle_time(candles: list[dict[str, Any]]) -> int | None:
@@ -17,8 +17,14 @@ def _latest_completed_candle_time(candles: list[dict[str, Any]]) -> int | None:
     return int(value) if value is not None else None
 
 
+def _finish_cycle(payload: dict[str, Any]) -> dict[str, Any]:
+    append_log("trade", {"event": "cycle_complete", "executed": payload.get("executed"), "ok": payload.get("ok"), "events": payload.get("events", []), "daily": payload.get("daily", {})})
+    return payload
+
+
 def run_cycle(execute: bool | None = None) -> dict[str, Any]:
     should_execute = settings.auto_trade_enabled if execute is None else execute
+    append_log("app", {"event": "cycle_started", "execute_requested": should_execute, "symbols": settings.trading_symbols})
     client = DemoMt5Client()
     ai_review_agent = AiReviewAgent()
     risk_manager = RiskManager()
@@ -26,19 +32,19 @@ def run_cycle(execute: bool | None = None) -> dict[str, Any]:
 
     account = client.account_info()
     if not account.get("connected"):
-        return {"ok": False, "executed": False, "account": account, "events": events}
+        return _finish_cycle({"ok": False, "executed": False, "account": account, "events": events})
     if not account.get("is_demo"):
-        return {
+        return _finish_cycle({
             "ok": False,
             "executed": False,
             "account": account,
             "events": [{"type": "veto", "reason": "AegisTrade autonomous mode is demo-only."}]
-        }
+        })
 
     positions = client.positions()
     daily = client.daily_trade_stats()
     if not should_execute:
-        return {
+        return _finish_cycle({
             "ok": True,
             "executed": False,
             "reason": "AUTO_TRADE_ENABLED is false; advisory and monitoring remain active.",
@@ -46,7 +52,7 @@ def run_cycle(execute: bool | None = None) -> dict[str, Any]:
             "positions": positions,
             "daily": daily,
             "events": events
-        }
+        })
 
     for result in client.close_profit_targets():
         events.append({"type": "profit_close", "result": result})
@@ -56,17 +62,17 @@ def run_cycle(execute: bool | None = None) -> dict[str, Any]:
 
     if daily["opened"] >= settings.max_daily_trades or daily["closed"] >= settings.max_daily_trades:
         events.append({"type": "veto", "reason": "Daily trade limit reached."})
-        return {"ok": True, "executed": True, "account": account, "positions": positions, "daily": daily, "events": events}
+        return _finish_cycle({"ok": True, "executed": True, "account": account, "positions": positions, "daily": daily, "events": events})
 
     if float(daily.get("net_profit", 0)) <= -settings.max_daily_loss_usd:
         events.append({"type": "veto", "reason": "Daily loss limit reached. Bot is locked until the next UTC day."})
-        return {"ok": True, "executed": True, "account": account, "positions": positions, "daily": daily, "events": events}
+        return _finish_cycle({"ok": True, "executed": True, "account": account, "positions": positions, "daily": daily, "events": events})
 
     if len(positions) >= settings.max_open_trades:
         events.append({"type": "veto", "reason": "Maximum open trades reached."})
-        return {"ok": True, "executed": True, "account": account, "positions": positions, "daily": daily, "events": events}
+        return _finish_cycle({"ok": True, "executed": True, "account": account, "positions": positions, "daily": daily, "events": events})
 
-    for symbol in SYMBOLS:
+    for symbol in settings.trading_symbols:
         positions = client.positions()
         if any(position["symbol"] == symbol for position in positions):
             events.append({"type": "skip", "symbol": symbol, "reason": "Position already open."})
@@ -136,11 +142,11 @@ def run_cycle(execute: bool | None = None) -> dict[str, Any]:
         except Exception as error:
             events.append({"type": "error", "symbol": symbol, "reason": str(error)})
 
-    return {
+    return _finish_cycle({
         "ok": True,
         "executed": True,
         "account": account,
         "positions": client.positions(),
         "daily": client.daily_trade_stats(),
         "events": events
-    }
+    })

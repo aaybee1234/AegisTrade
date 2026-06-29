@@ -589,3 +589,38 @@ MT5 executor sends only approved demo orders.
 ```
 
 This means OpenAI helps with review quality and transparency, but it does not get permission to ignore stop-loss rules, daily limits, account type checks, spread limits, or the manual auto-trade switch.
+## 2026-06-30: Testing Admin Cycle and Configurable Symbols
+
+Added for the current demo/testing phase:
+
+- dashboard `Force Test Cycle` button protected by `SINGLE_USER_CONTROL_TOKEN`
+- `/mt5/cycle` can queue one forced test cycle with `{ "force_execute": true }`
+- forced test cycles bypass only the auto-trading switch, not demo/risk/AI guardrails
+- worker/advisory symbol universe now comes from `TRADING_SYMBOLS`
+- status payload and dashboard show the configured scan list
+
+Temporary launch cleanup requirement:
+
+```text
+Before real users get access, remove the Force Test Cycle button or lock it behind admin RBAC, audit logs, and confirmation controls.
+```
+
+More setups and crypto pairs should be added with exact broker symbols from Exness MT5 Market Watch. OpenAI credits should make AI review calls work if billing/model access/rate limits are healthy; telemetry will show success or the next concrete API error.
+## 2026-06-30: Auto-Trading Test Mode and Central Logs
+
+Added for demo testing:
+
+- runtime JSONL logs for app commands, trading cycles, and OpenAI review calls
+- read-only log endpoint: `GET /mt5/logs?stream=all|app|trade|ai&limit=100`
+- `GET /mt5/ai-activity` remains the compact OpenAI health/usage view
+- API now logs queued control, cycle, and close-position commands
+- worker now logs cycle start/completion, vetoes, orders, and OpenAI review attempts
+
+Testing mode decision:
+
+```text
+Auto trading may be enabled on the demo VPS for supervised testing.
+Hard guardrails remain active: demo-only account, max open trades, daily trade cap, daily loss lock, SL/TP, spread filters, AI review requirement, and risk/reward checks.
+```
+
+If auto trading is enabled but trades do not open, first check `/mt5/logs?stream=trade&limit=50` for veto reasons such as daily loss lock, cooldown, OpenAI 429, high news risk, spread, or no valid setup.

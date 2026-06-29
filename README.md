@@ -328,3 +328,62 @@ Core demo guardrails:
 - AI cannot change deterministic order parameters or bypass risk
 
 Win rate is reported from actual closed bot trades and is never guaranteed. See [Windows deployment](docs/runbooks/WINDOWS_VPS_DEPLOYMENT.md) and [future Terraform](docs/FUTURE_TERRAFORM.md).
+## Testing Admin Controls
+
+During the single-account demo phase, the dashboard includes a protected `Force Test Cycle` button. It sends one command to:
+
+```text
+POST /mt5/cycle
+body: { "force_execute": true }
+header: x-aegis-control-token: <SINGLE_USER_CONTROL_TOKEN>
+```
+
+This bypasses the auto-trading switch only for one queued test cycle. It does not bypass demo-account checks, AI review, spread checks, max-open-trade checks, daily limits, loss limits, stop-loss rules, or risk/reward validation.
+
+Before AegisTrade is exposed to users, remove this button or lock it behind a real admin role, audit log, confirmation modal, and per-user permission system.
+
+## Adding More Setups And Cryptos
+
+The worker scans symbols from `.env`:
+
+```text
+TRADING_SYMBOLS=XAUUSDm,EURUSDm,BTCUSDm
+```
+
+To add more setups, use the exact Exness MT5 symbol names visible in the MT5 Market Watch, for example:
+
+```text
+TRADING_SYMBOLS=XAUUSDm,EURUSDm,GBPUSDm,USDJPYm,BTCUSDm,ETHUSDm
+```
+
+A symbol only becomes tradable if MT5 can select it, candle data is available, the strategy creates a non-HOLD signal, OpenAI review succeeds or is not required, and the deterministic risk manager approves it. Crypto/news research can add context and veto risk, but it cannot invent a trade by itself.
+
+Adding OpenAI API credits should allow the AI review layer to move past `HTTP 429 Too Many Requests` if the API key has billing, model access, and rate limit capacity. The dashboard's AI layer and `GET /mt5/ai-activity` show whether calls are succeeding.
+
+## Runtime Logs And Debug Endpoints
+
+The single-account deployment writes JSONL logs under:
+
+```text
+runtime/accounts/<account_id>/logs/
+```
+
+Streams:
+
+```text
+app.jsonl    API commands, worker commands, cycle start events
+trade.jsonl  cycle outcomes, vetoes, orders, profit-close attempts
+ai.jsonl     OpenAI review attempts, latency, request/response IDs, token usage, errors
+```
+
+Read-only API endpoints:
+
+```text
+GET /mt5/logs?stream=all&limit=100
+GET /mt5/logs?stream=app&limit=100
+GET /mt5/logs?stream=trade&limit=100
+GET /mt5/logs?stream=ai&limit=100
+GET /mt5/ai-activity
+```
+
+Use these during demo testing to prove whether the bot scanned, why a trade was vetoed, whether OpenAI was called, and whether MT5 accepted or rejected an order. Before multi-user launch, logs must be moved into database-backed, per-user audit tables with secret redaction and role-based access.

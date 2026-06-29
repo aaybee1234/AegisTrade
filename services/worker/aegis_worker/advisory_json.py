@@ -3,11 +3,11 @@ from typing import Any
 
 from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
+from aegis_worker.config import settings
 from aegis_worker.mt5.client import DemoMt5Client
 from aegis_worker.research.market_context import context_for_symbol
 from aegis_worker.risk.manager import RiskManager
 
-SYMBOLS = ["XAUUSDm", "EURUSDm", "BTCUSDm"]
 
 
 def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
@@ -19,7 +19,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
     daily = active_client.daily_trade_stats()
     ranked: list[dict[str, Any]] = []
 
-    for symbol in SYMBOLS:
+    for symbol in settings.trading_symbols:
         symbol_positions = [position for position in positions if position["symbol"] == symbol]
         try:
             candles = active_client.candles(symbol=symbol, timeframe="M5", count=200)

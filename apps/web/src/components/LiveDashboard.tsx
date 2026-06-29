@@ -67,6 +67,7 @@ type Mt5Status = {
     auto_scan_interval_seconds: number;
     news_refresh_seconds: number;
     ai_review_required: boolean;
+    trading_symbols?: string[];
   };
 };
 
@@ -263,7 +264,8 @@ export function LiveDashboard() {
     try {
       await fetchJson("/mt5/cycle", {
         method: "POST",
-        headers: { "x-aegis-control-token": token }
+        headers: { "content-type": "application/json", "x-aegis-control-token": token },
+        body: JSON.stringify({ force_execute: true })
       });
     } catch (error) {
       window.sessionStorage.removeItem("aegis-control-token");
@@ -315,9 +317,9 @@ export function LiveDashboard() {
               <span className="toggleTrack"><span /></span>
               <strong>{isChangingTrading ? "Updating" : "Auto trading"}</strong>
             </label>
-            <button className="primary" onClick={() => void runAgentCycle()} disabled={isRunningCycle || !connected || !status.bot.auto_trade_enabled}>
+            <button className="primary" onClick={() => void runAgentCycle()} disabled={isRunningCycle || !connected}>
               <Bot size={18} />
-              {isRunningCycle ? "Running" : "Run Once"}
+              {isRunningCycle ? "Running" : "Force Test Cycle"}
             </button>
           </div>
         </header>
@@ -359,6 +361,7 @@ export function LiveDashboard() {
             <span>Bot status</span>
             <strong className={status.bot.auto_trade_enabled ? "positive" : "paused"}><CirclePause size={18} /> {status.bot.auto_trade_enabled ? "Automatic" : "Advisory"}</strong>
             <small>{money(status.bot.max_risk_per_trade_usd)} max loss / {status.bot.minimum_risk_reward.toFixed(1)}R minimum</small>
+            <small>Scanning: {(status.bot.trading_symbols ?? []).join(", ") || "default symbols"}</small>
           </div>
           <div className="metric liveMetric">
             <span>Today</span>
