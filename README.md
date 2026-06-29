@@ -211,6 +211,27 @@ python -m aegis_worker
 If `OPENAI_API_KEY` is missing or the review call fails, the worker still reports a local explanation but automatic execution is vetoed by default (`AI_REVIEW_REQUIRED=true`).
 
 
+## OpenAI Agent Visibility
+
+OpenAI is used only inside the Python worker review step, not directly from the browser. The flow is:
+
+```text
+Strategy signal
+  -> AiReviewAgent
+  -> OpenAI Responses API structured JSON
+  -> deterministic RiskManager
+  -> MT5 demo executor
+```
+
+The AI receives the strategy candidate, account/risk context, open-position context, and available research/news context. It can explain the setup, lower confidence, rank the opportunity, or veto the trade. It cannot change the symbol, side, lot size, stop loss, take profit, daily trade limits, or any other hard risk rule.
+
+You can verify OpenAI usage from the dashboard's AI layer panel or from:
+
+```text
+GET /mt5/ai-activity
+```
+
+The telemetry includes whether an OpenAI key is configured, the configured model, total requests, success/failure counts, the last request status, request/response IDs, latency, token usage, and the last error if the API is unavailable or rate-limited. If the OpenAI call fails while `AI_REVIEW_REQUIRED=true`, execution fails closed.
 ## Current Progress Note
 
 For the latest team-facing architecture/progress summary, read:

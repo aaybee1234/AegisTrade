@@ -37,7 +37,7 @@ class Settings:
     auto_trade_enabled: bool = os.getenv("AUTO_TRADE_ENABLED", "false").lower() == "true"
     worker_poll_seconds: int = int(os.getenv("WORKER_POLL_SECONDS", "60"))
     max_open_trades: int = int(os.getenv("MAX_OPEN_TRADES", "1"))
-    max_daily_trades: int = int(os.getenv("MAX_DAILY_TRADES", "10"))
+    max_daily_trades: int = int(os.getenv("MAX_DAILY_TRADES", "100"))
     max_risk_per_trade_usd: float = float(os.getenv("MAX_RISK_PER_TRADE_USD", "0.50"))
     target_profit_per_trade_usd: float = float(os.getenv("TARGET_PROFIT_PER_TRADE_USD", "0.75"))
     max_daily_loss_usd: float = float(os.getenv("MAX_DAILY_LOSS_USD", "2.00"))

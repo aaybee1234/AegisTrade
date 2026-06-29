@@ -80,7 +80,7 @@ class AgentPolicyTests(unittest.TestCase):
             "trade_expert": True
         }
 
-        result = RiskManager().validate(signal, account, {"closed": 10})
+        result = RiskManager().validate(signal, account, {"closed": 100})
 
         self.assertFalse(result["approved"])
         self.assertIn("Daily", result["reason"])

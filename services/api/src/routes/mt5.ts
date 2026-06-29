@@ -157,6 +157,22 @@ mt5Router.get("/advisory", async (_req, res) => {
   }
 });
 
+mt5Router.get("/ai-activity", async (_req, res) => {
+  try {
+    res.json(await readRuntimeJson("ai_activity.json"));
+  } catch (error) {
+    res.status(503).json({
+      configured: Boolean(process.env.OPENAI_API_KEY),
+      configured_model: process.env.OPENAI_MODEL ?? null,
+      total_requests: 0,
+      successful_requests: 0,
+      failed_requests: 0,
+      skipped_reviews: 0,
+      last_call: null,
+      error: error instanceof Error ? error.message : "AI activity unavailable"
+    });
+  }
+});
 mt5Router.get("/accounts/:id/status", async (req, res) => {
   try {
     const status = await readRuntimeJson<any>("status.json", req.params.id);

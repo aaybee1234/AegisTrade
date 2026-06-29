@@ -1,9 +1,11 @@
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from aegis_worker.ai_telemetry import record_ai_activity
 from aegis_worker.config import settings
 
 
@@ -30,11 +32,21 @@ class ReviewedSignal:
 class AiReviewAgent:
     def review(self, signal: Any, context: dict[str, Any]) -> ReviewedSignal:
         if not settings.openai_api_key:
+            record_ai_activity(
+                status="not_configured",
+                symbol=signal.symbol,
+                latency_ms=0,
+                error="OPENAI_API_KEY is not configured."
+            )
             return self._fallback_review(signal, "OPENAI_API_KEY is not configured.", context)
 
+        started = time.perf_counter()
+        request_id = None
+        response_id = None
         try:
             payload = {
                 "model": settings.openai_model,
+                "store": False,
                 "input": [
                     {
                         "role": "system",
@@ -51,8 +63,32 @@ class AiReviewAgent:
                         "role": "user",
                         "content": json.dumps({
                             "signal": signal.model_dump(),
-                            "context": context,
-                            "required_json_keys": [
+                            "context": context
+                        })
+                    }
+                ],
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "aegis_trade_review",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "symbol": {"type": "string"},
+                                "action": {"type": "string", "enum": ["BUY", "SELL", "HOLD"]},
+                                "confidence": {"type": "number"},
+                                "lot_size": {"type": "number"},
+                                "entry_type": {"type": "string"},
+                                "stop_loss_pips": {"type": "integer"},
+                                "take_profit_pips": {"type": "integer"},
+                                "approved_for_risk_check": {"type": "boolean"},
+                                "reason": {"type": "string"},
+                                "warnings": {"type": "array", "items": {"type": "string"}},
+                                "news_risk": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+                                "news_summary": {"type": "string"}
+                            },
+                            "required": [
                                 "symbol",
                                 "action",
                                 "confidence",
@@ -65,11 +101,11 @@ class AiReviewAgent:
                                 "warnings",
                                 "news_risk",
                                 "news_summary"
-                            ]
-                        })
+                            ],
+                            "additionalProperties": False
+                        }
                     }
-                ],
-                "text": {"format": {"type": "json_object"}}
+                }
             }
             request = urllib.request.Request(
                 "https://api.openai.com/v1/responses",
@@ -81,9 +117,29 @@ class AiReviewAgent:
                 method="POST"
             )
             with urllib.request.urlopen(request, timeout=25) as response:
+                request_id = response.headers.get("x-request-id")
                 body = json.loads(response.read().decode("utf-8"))
-            return self._parse_review(body, signal, context)
+            response_id = body.get("id")
+            reviewed = self._parse_review(body, signal, context)
+            record_ai_activity(
+                status="success",
+                symbol=signal.symbol,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                request_id=request_id,
+                response_id=response_id,
+                response_model=body.get("model"),
+                usage=body.get("usage", {})
+            )
+            return reviewed
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, TypeError) as error:
+            record_ai_activity(
+                status="error",
+                symbol=signal.symbol,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                request_id=request_id,
+                response_id=response_id,
+                error=f"{type(error).__name__}: {error}"
+            )
             return self._fallback_review(signal, f"AI review unavailable: {error}", context)
 
     def _parse_review(self, body: dict[str, Any], signal: Any, context: dict[str, Any]) -> ReviewedSignal:

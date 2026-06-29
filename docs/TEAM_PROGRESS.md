@@ -550,7 +550,7 @@ Implemented locally and validated:
 
 - true EMA20/EMA50 trend checks, RSI, ATR, breakout confirmation, completed candles, volume, and spread filters
 - five-minute scan/cooldown and one-entry-per-completed-candle protection
-- one open position, 10 trades/day, $0.50 maximum estimated risk, $0.75 target, 1.5R minimum, and $2 daily-loss lock defaults
+- one open position, 100 trades/day ceiling, $0.50 maximum estimated risk, $0.75 target, 1.5R minimum, and $2 daily-loss lock defaults
 - official Federal Reserve and EIA RSS context plus CoinGecko trending-project discovery
 - AI structured review with news-risk classification, source count, explanation, ranking, and veto reasons
 - fail-closed execution when AI review or minimum research coverage is unavailable
@@ -566,3 +566,26 @@ Indicators propose -> research informs -> AI may veto -> deterministic risk appr
 Research is untrusted advisory input. It cannot choose a symbol, create a BUY/SELL signal, alter lot size/stops/target, bypass daily limits, or enable the bot. Automatic trading remains disabled until explicit demo observation approval.
 
 No profit rate or win rate is guaranteed. The next required milestone is an append-only decision/outcome journal followed by forward testing over a statistically meaningful demo sample.
+## 2026-06-30: OpenAI Visibility and 100-Trade Daily Ceiling
+
+Added in the current working update:
+
+- default daily completed-trade ceiling raised to `MAX_DAILY_TRADES=100`
+- dashboard and API now expose `GET /mt5/ai-activity`
+- AI review calls record request status, configured model, latency, request/response IDs, token usage, and last error
+- OpenAI is called from `AiReviewAgent` through the Responses API using structured JSON output
+- the worker still fails closed when AI review is required but unavailable
+- README now includes Windows PowerShell commands to restart the API, web, Nginx, and MT5 worker services
+
+Agent intelligence boundary:
+
+```text
+The system is agentic, but not a guaranteed profit engine.
+Indicators propose trades.
+Research/news adds context.
+OpenAI explains, ranks, and can veto.
+RiskManager enforces hard rules.
+MT5 executor sends only approved demo orders.
+```
+
+This means OpenAI helps with review quality and transparency, but it does not get permission to ignore stop-loss rules, daily limits, account type checks, spread limits, or the manual auto-trade switch.

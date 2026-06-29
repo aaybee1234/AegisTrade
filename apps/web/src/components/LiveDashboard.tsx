@@ -90,6 +90,25 @@ type Setup = {
   crypto_trending?: Array<{ name?: string; symbol?: string; market_cap_rank?: number }>;
 };
 
+type AiActivity = {
+  configured: boolean;
+  configured_model?: string | null;
+  total_requests: number;
+  successful_requests: number;
+  failed_requests: number;
+  skipped_reviews: number;
+  updated_at?: string;
+  last_call?: {
+    status: string;
+    symbol: string;
+    latency_ms: number;
+    request_id?: string | null;
+    response_id?: string | null;
+    response_model?: string | null;
+    usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+    error?: string | null;
+  } | null;
+};
 type Advisory = {
   setups: Setup[];
 };
@@ -99,8 +118,8 @@ const EMPTY_STATUS: Mt5Status = {
   account: { connected: false, is_demo: true, connection_error: "Waiting for first sync." },
   positions: [],
   summary: { open_positions: 0, floating_pl: 0 },
-  daily: { opened: 0, closed: 0, wins: 0, losses: 0, win_rate: 0, net_profit: 0, remaining: 10 },
-  bot: { auto_trade_enabled: false, max_open_trades: 1, max_daily_trades: 10, max_risk_per_trade_usd: 0.5, target_profit_per_trade_usd: 0.75, max_daily_loss_usd: 2, minimum_risk_reward: 1.5, trade_cooldown_seconds: 300, auto_scan_interval_seconds: 300, news_refresh_seconds: 900, ai_review_required: true }
+  daily: { opened: 0, closed: 0, wins: 0, losses: 0, win_rate: 0, net_profit: 0, remaining: 100 },
+  bot: { auto_trade_enabled: false, max_open_trades: 1, max_daily_trades: 100, max_risk_per_trade_usd: 0.5, target_profit_per_trade_usd: 0.75, max_daily_loss_usd: 2, minimum_risk_reward: 1.5, trade_cooldown_seconds: 300, auto_scan_interval_seconds: 300, news_refresh_seconds: 900, ai_review_required: true }
 };
 
 const rules = [
@@ -143,6 +162,7 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function LiveDashboard() {
   const [status, setStatus] = useState<Mt5Status>(EMPTY_STATUS);
   const [advisory, setAdvisory] = useState<Advisory>({ setups: [] });
+  const [aiActivity, setAiActivity] = useState<AiActivity>({ configured: false, total_requests: 0, successful_requests: 0, failed_requests: 0, skipped_reviews: 0, last_call: null });
   const [lastSync, setLastSync] = useState<string>("Not synced yet");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -157,12 +177,14 @@ export function LiveDashboard() {
   const sync = useCallback(async () => {
     setIsSyncing(true);
     try {
-      const [nextStatus, nextAdvisory] = await Promise.all([
+      const [nextStatus, nextAdvisory, nextAiActivity] = await Promise.all([
         fetchJson<Mt5Status>("/mt5/status"),
-        fetchJson<Advisory>("/mt5/advisory")
+        fetchJson<Advisory>("/mt5/advisory"),
+        fetchJson<AiActivity>("/mt5/ai-activity")
       ]);
       setStatus(nextStatus);
       setAdvisory(nextAdvisory);
+      setAiActivity(nextAiActivity);
       setLastSync(new Date().toLocaleTimeString());
       setSyncError(null);
     } catch (error) {
@@ -460,9 +482,17 @@ export function LiveDashboard() {
             <p className="panelText">
               The model reviews strategy signals and writes explanations. Hard-coded risk checks still decide whether a demo order is allowed. News and project research can only veto or reduce confidence; it cannot create trades.
             </p>
+            <ul className="rules">
+              <li>Provider: OpenAI Responses API</li>
+              <li>Configured model: {aiActivity.configured_model ?? "Not configured"}</li>
+              <li>Requests: {aiActivity.total_requests} total / {aiActivity.successful_requests} successful / {aiActivity.failed_requests} failed</li>
+              <li>Last review: {aiActivity.last_call ? `${aiActivity.last_call.status} for ${aiActivity.last_call.symbol} in ${aiActivity.last_call.latency_ms} ms` : "No request recorded"}</li>
+              <li>Tokens: {aiActivity.last_call?.usage?.total_tokens ?? 0}</li>
+              <li>Request ID: {aiActivity.last_call?.request_id ?? aiActivity.last_call?.response_id ?? "Unavailable"}</li>
+            </ul>
             <div className="inlineNotice">
               <AlertTriangle size={16} />
-              This page is live: account, positions, P/L, and setup ranking sync from MT5 through the API.
+              {aiActivity.last_call?.error ?? "AI telemetry is live. Model output remains advisory and cannot bypass risk rules."}
             </div>
           </div>
         </section>
