@@ -4,6 +4,7 @@ from typing import Any
 from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
 from aegis_worker.config import settings
+from aegis_worker.live_life import LiveLifeReviewAgent
 from aegis_worker.mt5.client import DemoMt5Client
 from aegis_worker.research.market_context import context_for_symbol
 from aegis_worker.risk.manager import RiskManager
@@ -12,7 +13,7 @@ from aegis_worker.risk.manager import RiskManager
 
 def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
     active_client = client or DemoMt5Client()
-    ai_review_agent = AiReviewAgent()
+    review_agent = LiveLifeReviewAgent() if settings.trading_profile == "live_life" else AiReviewAgent()
     risk_manager = RiskManager()
     account = active_client.account_info()
     positions = active_client.positions()
@@ -26,7 +27,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
             symbol_info = active_client.symbol_info(symbol)
             research = context_for_symbol(symbol)
             signal = build_signal(symbol=symbol, candles=candles, symbol_info=symbol_info)
-            reviewed = ai_review_agent.review(
+            reviewed = review_agent.review(
                 signal=signal,
                 context={
                     "account": account,
@@ -91,7 +92,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
             })
 
     ranked.sort(key=lambda item: item["rank_score"], reverse=True)
-    return {"setups": ranked, "positions": positions, "account": account, "daily": daily}
+    return {"setups": ranked, "positions": positions, "account": account, "daily": daily, "profile": settings.trading_profile, "symbols": settings.trading_symbols}
 
 
 def main() -> None:

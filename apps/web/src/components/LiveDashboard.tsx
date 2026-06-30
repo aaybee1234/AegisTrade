@@ -57,6 +57,7 @@ type Mt5Status = {
   };
   bot: {
     auto_trade_enabled: boolean;
+    trading_profile?: string;
     max_open_trades: number;
     max_daily_trades: number;
     max_risk_per_trade_usd: number;
@@ -125,7 +126,7 @@ const EMPTY_STATUS: Mt5Status = {
 
 const rules = [
   "Demo account required",
-  "Maximum 1 simultaneous open trade",
+  "Configured simultaneous trade limit",
   "Skip duplicate symbol positions",
   "Cooldown after each bot entry",
   "Spread filter before entry",
@@ -360,7 +361,8 @@ export function LiveDashboard() {
           <div className="metric">
             <span>Bot status</span>
             <strong className={status.bot.auto_trade_enabled ? "positive" : "paused"}><CirclePause size={18} /> {status.bot.auto_trade_enabled ? "Automatic" : "Advisory"}</strong>
-            <small>{money(status.bot.max_risk_per_trade_usd)} max loss / {status.bot.minimum_risk_reward.toFixed(1)}R minimum</small>
+            <small>{status.bot.trading_profile === "live_life" ? "Live Life local profile" : "Guarded AI profile"} / {status.bot.max_open_trades} positions</small>
+            <small>{money(status.bot.max_risk_per_trade_usd)} max estimated loss / {money(status.bot.target_profit_per_trade_usd)} target</small>
             <small>Scanning: {(status.bot.trading_symbols ?? []).join(", ") || "default symbols"}</small>
           </div>
           <div className="metric liveMetric">

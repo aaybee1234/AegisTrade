@@ -39,6 +39,7 @@ class Settings:
     mt5_terminal_path: str | None = os.getenv("MT5_TERMINAL_PATH")
     mt5_account_id: str = os.getenv("MT5_ACCOUNT_ID", "primary")
     auto_trade_enabled: bool = os.getenv("AUTO_TRADE_ENABLED", "false").lower() == "true"
+    trading_profile: str = os.getenv("TRADING_PROFILE", "guarded").lower()
     worker_poll_seconds: int = int(os.getenv("WORKER_POLL_SECONDS", "60"))
     max_open_trades: int = int(os.getenv("MAX_OPEN_TRADES", "1"))
     max_daily_trades: int = int(os.getenv("MAX_DAILY_TRADES", "100"))

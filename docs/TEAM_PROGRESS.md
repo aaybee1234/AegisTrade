@@ -624,3 +624,26 @@ Hard guardrails remain active: demo-only account, max open trades, daily trade c
 ```
 
 If auto trading is enabled but trades do not open, first check `/mt5/logs?stream=trade&limit=50` for veto reasons such as daily loss lock, cooldown, OpenAI 429, high news risk, spread, or no valid setup.
+
+## 2026-06-30: Live Life demo profile
+
+Implemented an optional `live_life` trading profile for testing while OpenAI is unavailable.
+
+Completed:
+
+- local review of deterministic strategy signals without an OpenAI request
+- hard demo-account restriction remains active
+- two simultaneous positions and up to two qualifying entries per scan
+- expanded Exness symbol list: XAUUSDm, EURUSDm, GBPUSDm, USDJPYm, AUDUSDm, USDCADm, BTCUSDm, ETHUSDm
+- configurable `$3.00` maximum estimated loss and `$0.50` target per trade
+- dashboard profile, position limit, risk cap, target, and symbol visibility
+- unit coverage for local approval, HOLD preservation, and real-account rejection
+- Windows bootstrap defaults and `.env.example` updated
+
+Operational caveats:
+
+- profit-only trading is not possible to guarantee
+- symbol names and availability must match each Exness account
+- `$3.00` is a maximum estimated stop loss; realized loss can vary due to broker execution
+- keep this profile demo-only until strategy backtesting, forward testing, drawdown analysis, and admin controls are complete
+- switch back to `TRADING_PROFILE=guarded` when OpenAI review should be mandatory

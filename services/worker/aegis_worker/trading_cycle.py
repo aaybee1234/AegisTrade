@@ -4,6 +4,7 @@ from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
 from aegis_worker.config import settings
 from aegis_worker.event_log import append_log
+from aegis_worker.live_life import LiveLifeReviewAgent
 from aegis_worker.mt5.client import DemoMt5Client
 from aegis_worker.research.market_context import context_for_symbol
 from aegis_worker.risk.manager import RiskManager
@@ -24,9 +25,9 @@ def _finish_cycle(payload: dict[str, Any]) -> dict[str, Any]:
 
 def run_cycle(execute: bool | None = None) -> dict[str, Any]:
     should_execute = settings.auto_trade_enabled if execute is None else execute
-    append_log("app", {"event": "cycle_started", "execute_requested": should_execute, "symbols": settings.trading_symbols})
+    append_log("app", {"event": "cycle_started", "execute_requested": should_execute, "symbols": settings.trading_symbols, "profile": settings.trading_profile})
     client = DemoMt5Client()
-    ai_review_agent = AiReviewAgent()
+    review_agent = LiveLifeReviewAgent() if settings.trading_profile == "live_life" else AiReviewAgent()
     risk_manager = RiskManager()
     events: list[dict[str, Any]] = []
 
@@ -99,7 +100,7 @@ def run_cycle(execute: bool | None = None) -> dict[str, Any]:
             symbol_info = client.symbol_info(symbol)
             research = context_for_symbol(symbol)
             signal = build_signal(symbol=symbol, candles=candles, symbol_info=symbol_info)
-            reviewed = ai_review_agent.review(
+            reviewed = review_agent.review(
                 signal=signal,
                 context={
                     "account": account,
@@ -137,7 +138,7 @@ def run_cycle(execute: bool | None = None) -> dict[str, Any]:
                 "news_summary": reviewed.news_summary,
                 "indicators": getattr(signal, "indicators", {})
             })
-            if result.get("accepted"):
+            if result.get("accepted") and len(client.positions()) >= settings.max_open_trades:
                 break
         except Exception as error:
             events.append({"type": "error", "symbol": symbol, "reason": str(error)})

@@ -387,3 +387,22 @@ GET /mt5/ai-activity
 ```
 
 Use these during demo testing to prove whether the bot scanned, why a trade was vetoed, whether OpenAI was called, and whether MT5 accepted or rejected an order. Before multi-user launch, logs must be moved into database-backed, per-user audit tables with secret redaction and role-based access.
+
+## Live Life demo profile
+
+`live_life` is an OpenAI-independent testing profile for demo accounts. The deterministic EMA/RSI/breakout strategy still creates each setup, while the local review profile replaces only the OpenAI/news approval step. Demo-account enforcement, configured-symbol allowlisting, spread checks, duplicate-position prevention, cooldowns, broker stop validation, daily limits, and dollar-risk sizing remain active.
+
+```env
+TRADING_PROFILE=live_life
+TRADING_SYMBOLS=XAUUSDm,EURUSDm,GBPUSDm,USDJPYm,AUDUSDm,USDCADm,BTCUSDm,ETHUSDm
+MAX_OPEN_TRADES=2
+MAX_DAILY_TRADES=100
+MAX_RISK_PER_TRADE_USD=3.00
+TARGET_PROFIT_PER_TRADE_USD=0.50
+MAX_DAILY_LOSS_USD=30.00
+MINIMUM_RISK_REWARD=0.10
+```
+
+The worker may open up to two independently qualified symbols in one scan. `$3.00` is the maximum estimated loss accepted by the sizing gate and `$0.50` is the target used for TP/automatic profit closing. Broker execution, spread, commission, and slippage can change realized results. No profile can guarantee profit-only trades.
+
+To restore OpenAI review, set `TRADING_PROFILE=guarded` and restart the services. The guarded profile vetoes trades when its configured OpenAI review is unavailable; the `live_life` profile makes no OpenAI request.

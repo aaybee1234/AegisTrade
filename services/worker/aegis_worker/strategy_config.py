@@ -49,6 +49,26 @@ SYMBOL_CONFIGS = {
         max_stop_points=50000,
         risk_reward=1.6,
         atr_multiplier=2.2
+    ),
+    "ETHUSDm": SymbolStrategyConfig(
+        symbol="ETHUSDm", lot_size=0.01, max_spread_points=1200,
+        min_stop_points=8000, max_stop_points=40000, risk_reward=1.6, atr_multiplier=2.2
+    ),
+    "GBPUSDm": SymbolStrategyConfig(
+        symbol="GBPUSDm", lot_size=0.01, max_spread_points=45,
+        min_stop_points=250, max_stop_points=1400, risk_reward=2.0, atr_multiplier=1.8
+    ),
+    "USDJPYm": SymbolStrategyConfig(
+        symbol="USDJPYm", lot_size=0.01, max_spread_points=45,
+        min_stop_points=250, max_stop_points=1400, risk_reward=2.0, atr_multiplier=1.8
+    ),
+    "AUDUSDm": SymbolStrategyConfig(
+        symbol="AUDUSDm", lot_size=0.01, max_spread_points=45,
+        min_stop_points=250, max_stop_points=1400, risk_reward=2.0, atr_multiplier=1.8
+    ),
+    "USDCADm": SymbolStrategyConfig(
+        symbol="USDCADm", lot_size=0.01, max_spread_points=45,
+        min_stop_points=250, max_stop_points=1400, risk_reward=2.0, atr_multiplier=1.8
     )
 }
 

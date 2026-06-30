@@ -5,7 +5,7 @@ from aegis_worker.config import settings
 
 class RiskManager:
     def __init__(self) -> None:
-        self.allowed_symbols = {"XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "XAUUSDm", "EURUSDm", "GBPUSDm", "USDJPYm", "BTCUSDm"}
+        self.allowed_symbols = set(settings.trading_symbols)
         self.max_lot_size = 0.01
         self.min_confidence = 0.65
 
@@ -34,11 +34,14 @@ class RiskManager:
         if not getattr(signal, "approved_for_risk_check", True):
             return {"approved": False, "reason": "AI review did not approve risk check handoff."}
 
-        if getattr(signal, "news_risk", "LOW") not in {"LOW", "MEDIUM"}:
-            return {"approved": False, "reason": "AI/news review vetoed this setup."}
+        news_risk = getattr(signal, "news_risk", "LOW")
+        local_review_bypass = settings.trading_profile == "live_life" and news_risk == "BYPASSED"
+        if not local_review_bypass:
+            if news_risk not in {"LOW", "MEDIUM"}:
+                return {"approved": False, "reason": "AI/news review vetoed this setup."}
 
-        if int(getattr(signal, "research_source_count", 0)) < 2:
-            return {"approved": False, "reason": "Research source coverage is too low for automatic execution."}
+            if int(getattr(signal, "research_source_count", 0)) < 2:
+                return {"approved": False, "reason": "Research source coverage is too low for automatic execution."}
 
         if signal.symbol not in self.allowed_symbols:
             return {"approved": False, "reason": "Symbol is not allowed."}
