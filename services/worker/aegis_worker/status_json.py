@@ -34,7 +34,8 @@ def build_status(client: DemoMt5Client | None = None) -> dict[str, Any]:
         "summary": {
             "open_positions": len(positions),
             "floating_pl": round(sum(position["profit"] for position in positions), 2)
-        }
+        },
+        "performance": active_client.performance_ranges()
     }
 
 

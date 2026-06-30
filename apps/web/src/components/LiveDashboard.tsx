@@ -41,6 +41,23 @@ type Position = {
 
 type DashboardModule = "main" | "live-life";
 
+type PerformanceSummary = {
+  range: string;
+  label: string;
+  total_invested_usd: number;
+  open_invested_usd: number;
+  realized_return_usd: number;
+  floating_return_usd: number;
+  total_return_usd: number;
+  return_percent: number;
+  opened: number;
+  closed: number;
+  wins: number;
+  losses: number;
+};
+
+type PerformanceRange = "today" | "yesterday" | "last3" | "last7";
+
 type Mt5Status = {
   account: Account;
   positions: Position[];
@@ -57,6 +74,7 @@ type Mt5Status = {
     net_profit: number;
     remaining: number;
   };
+  performance?: Partial<Record<PerformanceRange, PerformanceSummary>>;
   bot: {
     auto_trade_enabled: boolean;
     trading_environment?: string;
@@ -129,13 +147,36 @@ type PositionSample = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const EMPTY_PERFORMANCE: PerformanceSummary = {
+  range: "today",
+  label: "Today",
+  total_invested_usd: 0,
+  open_invested_usd: 0,
+  realized_return_usd: 0,
+  floating_return_usd: 0,
+  total_return_usd: 0,
+  return_percent: 0,
+  opened: 0,
+  closed: 0,
+  wins: 0,
+  losses: 0
+};
+
 const EMPTY_STATUS: Mt5Status = {
   account: { connected: false, is_demo: true, connection_error: "Waiting for first sync." },
   positions: [],
   summary: { open_positions: 0, floating_pl: 0 },
   daily: { opened: 0, closed: 0, wins: 0, losses: 0, win_rate: 0, net_profit: 0, remaining: 100 },
+  performance: { today: EMPTY_PERFORMANCE },
   bot: { auto_trade_enabled: false, max_open_trades: 1, max_daily_trades: 100, max_risk_per_trade_usd: 0.5, target_profit_per_trade_usd: 0.75, max_daily_loss_usd: 2, minimum_risk_reward: 1.5, trade_cooldown_seconds: 300, auto_scan_interval_seconds: 300, news_refresh_seconds: 900, ai_review_required: true }
 };
+
+const performanceRanges: Array<{ value: PerformanceRange; label: string }> = [
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "last3", label: "Last 3 days" },
+  { value: "last7", label: "Last 7 days" }
+];
 
 const rules = [
   "Demo account required",
@@ -261,6 +302,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
   const [isRunningCycle, setIsRunningCycle] = useState(false);
   const [isChangingTrading, setIsChangingTrading] = useState(false);
   const [positionHistory, setPositionHistory] = useState<Record<string, PositionSample[]>>({});
+  const [performanceRange, setPerformanceRange] = useState<PerformanceRange>("today");
   const advisoryPollRef = useRef(0);
   const aiPollRef = useRef(0);
 
@@ -273,6 +315,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
   const moduleEyebrow = isLiveLifeModule ? "OpenAI-free demo trading module" : "Live demo trading console";
   const setupTitle = isLiveLifeModule ? "Live Life Setups" : "Ranked Setups";
   const setupLabel = isLiveLifeModule ? "Local strategy scanner" : "Live AI advisory";
+  const selectedPerformance = status.performance?.[performanceRange] ?? EMPTY_PERFORMANCE;
 
   const sync = useCallback(async (includeHeavy = false) => {
     setIsSyncing(true);
@@ -470,7 +513,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
           <div className="metric liveMetric">
             <span>Equity</span>
             <AnimatedValue value={account.equity ?? 0} currency={currency} />
-            <small>Polls MT5 every 3 seconds</small>
+            <small>Polls MT5 every second</small>
           </div>
           <div className="metric liveMetric">
             <span>Floating P/L</span>
@@ -495,6 +538,54 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
             <span>Measured win rate</span>
             <AnimatedValue value={status.daily.win_rate} suffix="%" maximumFractionDigits={1} />
             <small>{status.daily.wins} wins / {status.daily.losses} losses, {money(status.daily.net_profit, currency)} net</small>
+          </div>
+        </section>
+
+        <section className="performancePanel" aria-label="Trading performance">
+          <div className="performanceHeader">
+            <div>
+              <p className="sectionLabel">Trading performance</p>
+              <h2>Invested Amount And Return</h2>
+            </div>
+            <label className="rangeSelect">
+              <span>Range</span>
+              <select value={performanceRange} onChange={(event) => setPerformanceRange(event.target.value as PerformanceRange)}>
+                {performanceRanges.map((range) => (
+                  <option key={range.value} value={range.value}>{range.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="performanceGrid">
+            <div>
+              <span>Total invested</span>
+              <AnimatedValue value={selectedPerformance.total_invested_usd} currency={currency} />
+              <small>Estimated MT5 margin used for bot entries in {selectedPerformance.label.toLowerCase()}</small>
+            </div>
+            <div>
+              <span>Total return</span>
+              <AnimatedValue
+                value={selectedPerformance.total_return_usd}
+                currency={currency}
+                className={selectedPerformance.total_return_usd >= 0 ? "positive livePulse" : "negative livePulse"}
+              />
+              <small>{money(selectedPerformance.realized_return_usd, currency)} realized / {money(selectedPerformance.floating_return_usd, currency)} floating</small>
+            </div>
+            <div>
+              <span>Return rate</span>
+              <AnimatedValue
+                value={selectedPerformance.return_percent}
+                suffix="%"
+                maximumFractionDigits={2}
+                className={selectedPerformance.return_percent >= 0 ? "positive" : "negative"}
+              />
+              <small>{selectedPerformance.closed} closed, {selectedPerformance.wins} wins, {selectedPerformance.losses} losses</small>
+            </div>
+            <div>
+              <span>Open invested</span>
+              <AnimatedValue value={selectedPerformance.open_invested_usd} currency={currency} />
+              <small>{selectedPerformance.opened} bot entries opened in this range</small>
+            </div>
           </div>
         </section>
 

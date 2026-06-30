@@ -110,6 +110,7 @@ class DemoMt5Client:
                 "sl": float(position.sl),
                 "tp": float(position.tp),
                 "profit": float(position.profit),
+                "time": int(getattr(position, "time", 0)),
                 "magic": int(position.magic),
                 "comment": position.comment
             }
@@ -312,6 +313,100 @@ class DemoMt5Client:
             "win_rate": round((wins / closed * 100) if closed else 0, 2),
             "net_profit": round(sum(outcomes), 2),
             "remaining": max(settings.max_daily_trades - closed, 0)
+        }
+
+    def _range_bounds(self, range_name: str) -> tuple[Any, Any, str]:
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        if range_name == "yesterday":
+            return today - timedelta(days=1), today, "Yesterday"
+        if range_name == "last3":
+            return today - timedelta(days=2), now, "Last 3 days"
+        if range_name == "last7":
+            return today - timedelta(days=6), now, "Last 7 days"
+        return today, now, "Today"
+
+    def _deal_margin_estimate(self, deal: Any) -> float:
+        if self.mt5 is None:
+            return 0
+        symbol = getattr(deal, "symbol", "")
+        volume = float(getattr(deal, "volume", 0) or 0)
+        price = float(getattr(deal, "price", 0) or 0)
+        if not symbol or volume <= 0 or price <= 0:
+            return 0
+        deal_type = getattr(deal, "type", None)
+        order_type = self.mt5.ORDER_TYPE_BUY if deal_type == self.mt5.DEAL_TYPE_BUY else self.mt5.ORDER_TYPE_SELL
+        margin = self.mt5.order_calc_margin(order_type, symbol, volume, price)
+        return abs(float(margin)) if margin is not None else 0
+
+    def _position_margin_estimate(self, position: dict[str, Any]) -> float:
+        if self.mt5 is None:
+            return 0
+        symbol = position["symbol"]
+        order_type = self.mt5.ORDER_TYPE_BUY if position["type"] == "BUY" else self.mt5.ORDER_TYPE_SELL
+        margin = self.mt5.order_calc_margin(order_type, symbol, float(position["volume"]), float(position["price_current"]))
+        return abs(float(margin)) if margin is not None else 0
+
+    def performance_summary(self, range_name: str = "today") -> dict[str, Any]:
+        normalized = range_name if range_name in {"today", "yesterday", "last3", "last7"} else "today"
+        if not self.connected or self.mt5 is None:
+            return {
+                "range": normalized,
+                "label": "Today",
+                "total_invested_usd": 0,
+                "open_invested_usd": 0,
+                "realized_return_usd": 0,
+                "floating_return_usd": 0,
+                "total_return_usd": 0,
+                "return_percent": 0,
+                "opened": 0,
+                "closed": 0,
+                "wins": 0,
+                "losses": 0
+            }
+
+        start, end, label = self._range_bounds(normalized)
+        deals = self.mt5.history_deals_get(start, end) or []
+        bot_deals = [deal for deal in deals if int(getattr(deal, "magic", 0)) == 260625]
+        entry_deals = [deal for deal in bot_deals if getattr(deal, "entry", None) == self.mt5.DEAL_ENTRY_IN]
+        closed_deals = [
+            deal for deal in bot_deals
+            if getattr(deal, "entry", None) in {self.mt5.DEAL_ENTRY_OUT, self.mt5.DEAL_ENTRY_OUT_BY}
+        ]
+        outcomes = [
+            float(getattr(deal, "profit", 0)) + float(getattr(deal, "commission", 0)) + float(getattr(deal, "swap", 0))
+            for deal in closed_deals
+        ]
+        positions = [position for position in self.positions() if int(position.get("magic", 0)) == 260625]
+        open_invested = sum(self._position_margin_estimate(position) for position in positions)
+        total_invested = sum(self._deal_margin_estimate(deal) for deal in entry_deals)
+        if normalized in {"today", "last3", "last7"}:
+            total_invested += open_invested
+        realized = round(sum(outcomes), 2)
+        floating = round(sum(float(position["profit"]) for position in positions), 2)
+        total_return = round(realized + floating, 2)
+        invested = round(total_invested, 2)
+        return {
+            "range": normalized,
+            "label": label,
+            "total_invested_usd": invested,
+            "open_invested_usd": round(open_invested, 2),
+            "realized_return_usd": realized,
+            "floating_return_usd": floating,
+            "total_return_usd": total_return,
+            "return_percent": round((total_return / invested * 100) if invested else 0, 2),
+            "opened": len(entry_deals),
+            "closed": len(closed_deals),
+            "wins": sum(1 for value in outcomes if value > 0),
+            "losses": sum(1 for value in outcomes if value <= 0)
+        }
+
+    def performance_ranges(self) -> dict[str, Any]:
+        return {
+            key: self.performance_summary(key)
+            for key in ("today", "yesterday", "last3", "last7")
         }
 
     def close_profit_targets(self) -> list[dict[str, Any]]:

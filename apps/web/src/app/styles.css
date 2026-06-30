@@ -287,6 +287,76 @@ button {
   color: #8a5d12;
 }
 
+
+.performancePanel {
+  background: #ffffff;
+  border: 1px solid #dce5ea;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.performanceHeader {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.rangeSelect {
+  align-items: center;
+  color: #5d707d;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 9px;
+}
+
+.rangeSelect select {
+  background: #f4f7f9;
+  border: 1px solid #ccd8df;
+  border-radius: 6px;
+  color: #17202a;
+  font: inherit;
+  min-height: 38px;
+  padding: 0 36px 0 10px;
+}
+
+.performanceGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.performanceGrid div {
+  background: #f8fbff;
+  border: 1px solid #dbe7ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.performanceGrid span {
+  color: #5d707d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.performanceGrid strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.performanceGrid small {
+  color: #5d707d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .contentGrid {
   display: grid;
   gap: 16px;
@@ -427,7 +497,77 @@ button {
   }
 
   .metrics,
-  .contentGrid {
+
+.performancePanel {
+  background: #ffffff;
+  border: 1px solid #dce5ea;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.performanceHeader {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.rangeSelect {
+  align-items: center;
+  color: #5d707d;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 9px;
+}
+
+.rangeSelect select {
+  background: #f4f7f9;
+  border: 1px solid #ccd8df;
+  border-radius: 6px;
+  color: #17202a;
+  font: inherit;
+  min-height: 38px;
+  padding: 0 36px 0 10px;
+}
+
+.performanceGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.performanceGrid div {
+  background: #f8fbff;
+  border: 1px solid #dbe7ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.performanceGrid span {
+  color: #5d707d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.performanceGrid strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.performanceGrid small {
+  color: #5d707d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.contentGrid {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -513,7 +653,77 @@ button {
   }
 
   .metrics,
-  .contentGrid {
+
+.performancePanel {
+  background: #ffffff;
+  border: 1px solid #dce5ea;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.performanceHeader {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.rangeSelect {
+  align-items: center;
+  color: #5d707d;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 9px;
+}
+
+.rangeSelect select {
+  background: #f4f7f9;
+  border: 1px solid #ccd8df;
+  border-radius: 6px;
+  color: #17202a;
+  font: inherit;
+  min-height: 38px;
+  padding: 0 36px 0 10px;
+}
+
+.performanceGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.performanceGrid div {
+  background: #f8fbff;
+  border: 1px solid #dbe7ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.performanceGrid span {
+  color: #5d707d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.performanceGrid strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.performanceGrid small {
+  color: #5d707d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.contentGrid {
     grid-template-columns: 1fr;
   }
 
