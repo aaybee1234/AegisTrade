@@ -25,7 +25,7 @@ def _finish_cycle(payload: dict[str, Any]) -> dict[str, Any]:
 
 def run_cycle(execute: bool | None = None) -> dict[str, Any]:
     should_execute = settings.auto_trade_enabled if execute is None else execute
-    append_log("app", {"event": "cycle_started", "execute_requested": should_execute, "symbols": settings.trading_symbols, "profile": settings.trading_profile})
+    append_log("app", {"event": "cycle_started", "execute_requested": should_execute, "symbols": settings.trading_symbols, "profile": settings.trading_profile, "environment": settings.trading_environment, "portfolios": settings.trading_portfolios})
     client = DemoMt5Client()
     review_agent = LiveLifeReviewAgent() if settings.trading_profile == "live_life" else AiReviewAgent()
     risk_manager = RiskManager()

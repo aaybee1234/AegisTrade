@@ -39,6 +39,8 @@ type Position = {
   profit: number;
 };
 
+type DashboardModule = "main" | "live-life";
+
 type Mt5Status = {
   account: Account;
   positions: Position[];
@@ -57,7 +59,9 @@ type Mt5Status = {
   };
   bot: {
     auto_trade_enabled: boolean;
+    trading_environment?: string;
     trading_profile?: string;
+    trading_portfolios?: string[];
     max_open_trades: number;
     max_daily_trades: number;
     max_risk_per_trade_usd: number;
@@ -83,6 +87,7 @@ type Setup = {
   warnings: string[];
   stop_loss_points: number;
   take_profit_points: number;
+  portfolio?: string;
   strategy?: string;
   indicators?: Record<string, number>;
   news_risk?: string;
@@ -113,6 +118,8 @@ type AiActivity = {
 };
 type Advisory = {
   setups: Setup[];
+  environment?: string;
+  portfolios?: string[];
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -161,7 +168,7 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json();
 }
 
-export function LiveDashboard() {
+export function LiveDashboard({ module = "main" }: { module?: DashboardModule }) {
   const [status, setStatus] = useState<Mt5Status>(EMPTY_STATUS);
   const [advisory, setAdvisory] = useState<Advisory>({ setups: [] });
   const [aiActivity, setAiActivity] = useState<AiActivity>({ configured: false, total_requests: 0, successful_requests: 0, failed_requests: 0, skipped_reviews: 0, last_call: null });
@@ -175,6 +182,12 @@ export function LiveDashboard() {
   const account = status.account;
   const currency = account.currency ?? "USD";
   const connected = Boolean(account.connected);
+  const isLiveLifeModule = module === "live-life";
+  const visiblePortfolios = status.bot.trading_portfolios ?? advisory.portfolios ?? [];
+  const moduleTitle = isLiveLifeModule ? "Live Life Lab" : "Aegis Demo Bot";
+  const moduleEyebrow = isLiveLifeModule ? "OpenAI-free demo trading module" : "Live demo trading console";
+  const setupTitle = isLiveLifeModule ? "Live Life Setups" : "Ranked Setups";
+  const setupLabel = isLiveLifeModule ? "Local strategy scanner" : "Live AI advisory";
 
   const sync = useCallback(async () => {
     setIsSyncing(true);
@@ -285,7 +298,8 @@ export function LiveDashboard() {
           <span>AegisTrade</span>
         </div>
         <nav className="navList" aria-label="Main navigation">
-          <a className="active">Dashboard</a>
+          <a href="/" className={!isLiveLifeModule ? "active" : undefined}>Dashboard</a>
+          <a href="/live-life" className={isLiveLifeModule ? "active" : undefined}>Live Life</a>
           <a>Signals</a>
           <a>Trades</a>
           <a>Journal</a>
@@ -297,8 +311,8 @@ export function LiveDashboard() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Live demo trading console</p>
-            <h1>Aegis Demo Bot</h1>
+            <p className="eyebrow">{moduleEyebrow}</p>
+            <h1>{moduleTitle}</h1>
           </div>
           <div className="actions">
             <button className="iconButton" aria-label="Open bot settings" title="Settings">
@@ -363,6 +377,8 @@ export function LiveDashboard() {
             <strong className={status.bot.auto_trade_enabled ? "positive" : "paused"}><CirclePause size={18} /> {status.bot.auto_trade_enabled ? "Automatic" : "Advisory"}</strong>
             <small>{status.bot.trading_profile === "live_life" ? "Live Life local profile" : "Guarded AI profile"} / {status.bot.max_open_trades} positions</small>
             <small>{money(status.bot.max_risk_per_trade_usd)} max estimated loss / {money(status.bot.target_profit_per_trade_usd)} target</small>
+            <small>Environment: {status.bot.trading_environment ?? "main"}</small>
+            <small>Portfolios: {visiblePortfolios.join(", ") || "custom symbols"}</small>
             <small>Scanning: {(status.bot.trading_symbols ?? []).join(", ") || "default symbols"}</small>
           </div>
           <div className="metric liveMetric">
@@ -440,8 +456,8 @@ export function LiveDashboard() {
           <div className="panel">
             <div className="panelHeader">
               <div>
-                <p className="sectionLabel">Live AI advisory</p>
-                <h2>Ranked Setups</h2>
+                <p className="sectionLabel">{setupLabel}</p>
+                <h2>{setupTitle}</h2>
               </div>
               <WalletCards size={19} />
             </div>
@@ -457,9 +473,9 @@ export function LiveDashboard() {
                 sortedSetups.map((setup) => (
                   <article className="signal" key={setup.symbol}>
                     <div className="signalMain">
-                      <strong>{setup.symbol}</strong>
+                      <strong>{setup.symbol} {setup.portfolio ? <small className="portfolioBadge">{setup.portfolio}</small> : null}</strong>
                       <span>{setup.explanation}</span>
-                      <span>News risk: {setup.news_risk ?? "UNKNOWN"} - {setup.news_summary ?? "No AI/news summary yet."}</span>
+                      <span>{isLiveLifeModule ? "Local review" : "News risk"}: {setup.news_risk ?? "UNKNOWN"} - {setup.news_summary ?? "No AI/news summary yet."}</span>
                       {setup.indicators ? <span>RSI {setup.indicators.rsi14 ?? "n/a"} / spread {setup.indicators.spread_points ?? "n/a"} / ATR {setup.indicators.atr_points ?? "n/a"}</span> : null}
                       {setup.headlines && setup.headlines.length > 0 ? <span>Research: {setup.headlines.map((headline) => headline.source).filter(Boolean).join(", ")}</span> : null}
                       {setup.veto_reasons.length > 0 ? <span>Veto: {setup.veto_reasons.join(" ")}</span> : null}
@@ -479,21 +495,23 @@ export function LiveDashboard() {
           <div className="panel accentPanel">
             <div className="panelHeader">
               <div>
-                <p className="sectionLabel">AI layer</p>
-                <h2>Review Agent</h2>
+                <p className="sectionLabel">{isLiveLifeModule ? "Local layer" : "AI layer"}</p>
+                <h2>{isLiveLifeModule ? "Live Life Review" : "Review Agent"}</h2>
               </div>
               <TrendingUp size={19} />
             </div>
             <p className="panelText">
-              The model reviews strategy signals and writes explanations. Hard-coded risk checks still decide whether a demo order is allowed. News and project research can only veto or reduce confidence; it cannot create trades.
+              {isLiveLifeModule
+                ? "Live Life bypasses OpenAI while testing demo execution. The deterministic scanner ranks setups, then hard-coded risk checks decide whether a demo order is allowed."
+                : "The model reviews strategy signals and writes explanations. Hard-coded risk checks still decide whether a demo order is allowed. News and project research can only veto or reduce confidence; it cannot create trades."}
             </p>
             <ul className="rules">
-              <li>Provider: OpenAI Responses API</li>
-              <li>Configured model: {aiActivity.configured_model ?? "Not configured"}</li>
+              <li>Provider: {isLiveLifeModule ? "Local deterministic review" : "OpenAI Responses API"}</li>
+              <li>Configured model: {isLiveLifeModule ? "Bypassed for this module" : aiActivity.configured_model ?? "Not configured"}</li>
               <li>Requests: {aiActivity.total_requests} total / {aiActivity.successful_requests} successful / {aiActivity.failed_requests} failed</li>
-              <li>Last review: {aiActivity.last_call ? `${aiActivity.last_call.status} for ${aiActivity.last_call.symbol} in ${aiActivity.last_call.latency_ms} ms` : "No request recorded"}</li>
-              <li>Tokens: {aiActivity.last_call?.usage?.total_tokens ?? 0}</li>
-              <li>Request ID: {aiActivity.last_call?.request_id ?? aiActivity.last_call?.response_id ?? "Unavailable"}</li>
+              <li>Last review: {isLiveLifeModule ? "Local Live Life review" : aiActivity.last_call ? `${aiActivity.last_call.status} for ${aiActivity.last_call.symbol} in ${aiActivity.last_call.latency_ms} ms` : "No request recorded"}</li>
+              <li>Tokens: {isLiveLifeModule ? 0 : aiActivity.last_call?.usage?.total_tokens ?? 0}</li>
+              <li>Request ID: {isLiveLifeModule ? "Not used" : aiActivity.last_call?.request_id ?? aiActivity.last_call?.response_id ?? "Unavailable"}</li>
             </ul>
             <div className="inlineNotice">
               <AlertTriangle size={16} />

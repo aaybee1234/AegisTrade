@@ -1,8 +1,10 @@
 import json
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from aegis_worker.agents.ai_review_agent import AiReviewAgent
+from aegis_worker.config import settings
 from aegis_worker.risk.manager import RiskManager
 
 
@@ -54,11 +56,12 @@ class AgentPolicyTests(unittest.TestCase):
             reason="Deterministic trend signal."
         )
 
-        reviewed = AiReviewAgent()._fallback_review(
-            signal,
-            "rate limited",
-            {"research": {"successful_sources": 3}}
-        )
+        with patch.object(settings, "ai_review_required", True):
+            reviewed = AiReviewAgent()._fallback_review(
+                signal,
+                "rate limited",
+                {"research": {"successful_sources": 3}}
+            )
 
         self.assertFalse(reviewed.approved_for_risk_check)
         self.assertEqual(reviewed.research_source_count, 3)

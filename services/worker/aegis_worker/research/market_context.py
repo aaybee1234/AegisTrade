@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis_worker.config import settings
+from aegis_worker.portfolio_config import PORTFOLIOS, portfolio_for_symbol
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CACHE_PATH = PROJECT_ROOT / "runtime" / "research" / "market_context.json"
@@ -15,12 +16,12 @@ RSS_SOURCES = (
     {
         "name": "Federal Reserve",
         "url": "https://www.federalreserve.gov/feeds/press_all.xml",
-        "symbols": ["EURUSDm", "XAUUSDm", "BTCUSDm"]
+        "symbols": [*PORTFOLIOS["forex"], *PORTFOLIOS["metals"], *PORTFOLIOS["crypto"]]
     },
     {
         "name": "U.S. Energy Information Administration",
         "url": "https://www.eia.gov/rss/todayinenergy.xml",
-        "symbols": ["XAUUSDm"]
+        "symbols": [*PORTFOLIOS["energy"], *PORTFOLIOS["metals"]]
     }
 )
 COINGECKO_TRENDING_URL = "https://api.coingecko.com/api/v3/search/trending"
@@ -137,12 +138,14 @@ def refresh_market_context(force: bool = False) -> dict[str, Any]:
 def context_for_symbol(symbol: str) -> dict[str, Any]:
     payload = refresh_market_context()
     headlines = [item for item in payload.get("headlines", []) if symbol in item.get("symbols", [])][:10]
+    portfolio = portfolio_for_symbol(symbol)
     return {
         "fetched_at": payload.get("fetched_at"),
         "successful_sources": payload.get("successful_sources", 0),
         "source_count": payload.get("source_count", 0),
         "errors": payload.get("errors", []),
         "headlines": headlines,
-        "crypto_trending": payload.get("crypto_trending", []) if symbol == "BTCUSDm" else [],
+        "crypto_trending": payload.get("crypto_trending", []) if portfolio == "crypto" else [],
+        "portfolio": portfolio,
         "policy": "Research context may veto or reduce confidence. It cannot create a symbol or trade."
     }

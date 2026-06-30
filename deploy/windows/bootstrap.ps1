@@ -196,7 +196,9 @@ function Write-EnvFile {
     "SINGLE_USER_ACCOUNT_ID=primary",
     "SINGLE_USER_CONTROL_TOKEN=$([guid]::NewGuid().ToString('N'))",
     "AUTO_TRADE_ENABLED=false",
+    "AEGIS_TRADING_ENV=main",
     "TRADING_PROFILE=guarded",
+    "TRADING_PORTFOLIOS=",
     "TRADING_SYMBOLS=XAUUSDm,EURUSDm,GBPUSDm,USDJPYm,AUDUSDm,USDCADm,BTCUSDm,ETHUSDm",
     "WORKER_POLL_SECONDS=5",
     "MAX_OPEN_TRADES=1",
@@ -211,7 +213,23 @@ function Write-EnvFile {
     "AI_REVIEW_REQUIRED=true"
   )
   Set-Content -LiteralPath ".env" -Value $lines -Encoding UTF8
+  $liveLifeLines = @(
+    "TRADING_PROFILE=live_life",
+    "TRADING_PORTFOLIOS=metals,energy,crypto",
+    "TRADING_SYMBOLS=",
+    "MAX_OPEN_TRADES=2",
+    "MAX_DAILY_TRADES=100",
+    "MAX_RISK_PER_TRADE_USD=3.00",
+    "TARGET_PROFIT_PER_TRADE_USD=0.50",
+    "MAX_DAILY_LOSS_USD=30.00",
+    "MINIMUM_RISK_REWARD=0.10",
+    "TRADE_COOLDOWN_SECONDS=300",
+    "AUTO_SCAN_INTERVAL_SECONDS=180",
+    "AI_REVIEW_REQUIRED=false"
+  )
+  Set-Content -LiteralPath ".env.live-life" -Value $liveLifeLines -Encoding UTF8
   Write-Ok ".env written at $ProjectDir\.env"
+  Write-Ok ".env.live-life written for optional Live Life testing mode"
   Pop-Location
 }
 

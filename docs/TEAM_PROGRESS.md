@@ -647,3 +647,19 @@ Operational caveats:
 - `$3.00` is a maximum estimated stop loss; realized loss can vary due to broker execution
 - keep this profile demo-only until strategy backtesting, forward testing, drawdown analysis, and admin controls are complete
 - switch back to `TRADING_PROFILE=guarded` when OpenAI review should be mandatory
+
+## 2026-06-30: Live Life Isolated Environment and Portfolio Expansion
+
+Updated after separating the testing mode from the main module:
+
+- `/` remains the guarded Aegis Demo Bot dashboard
+- `/live-life` is the separate Live Life Lab tab for OpenAI-free demo execution testing
+- `.env` now selects the environment with `AEGIS_TRADING_ENV=main` or `AEGIS_TRADING_ENV=live_life`
+- `.env.live-life` can override only trading behavior while credentials remain in `.env`
+- portfolio scanning added for metals, energy, crypto, and forex groups
+- current Live Life portfolio symbols: XAUUSDm, XAGUSDm, XPTUSDm, XPDUSDm, USOILm, UKOILm, BTCUSDm, ETHUSDm, BTCUSDTm, ETHBTCm
+- strategy scanner now supports both breakout and EMA/RSI continuation setups
+- advisory/status payloads include environment, portfolio, and expanded symbols
+- risk manager now supports broker-aware symbol lot caps, including ETHUSDm min lot behavior
+
+The point of this change is to reduce idle scans during demo testing without removing hard safety controls. Live Life still cannot bypass demo-only enforcement, max open trades, duplicate symbol checks, cooldowns, spread filters, broker-calculated dollar-risk sizing, daily trade limits, or daily loss lock.

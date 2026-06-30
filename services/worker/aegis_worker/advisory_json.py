@@ -5,6 +5,7 @@ from aegis_worker.agents.ai_review_agent import AiReviewAgent
 from aegis_worker.agents.market_agent import build_signal
 from aegis_worker.config import settings
 from aegis_worker.live_life import LiveLifeReviewAgent
+from aegis_worker.portfolio_config import portfolio_for_symbol
 from aegis_worker.mt5.client import DemoMt5Client
 from aegis_worker.research.market_context import context_for_symbol
 from aegis_worker.risk.manager import RiskManager
@@ -49,6 +50,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
             rank_score = round(float(reviewed.confidence) * (0 if veto_reasons else 100), 2)
             ranked.append({
                 "symbol": symbol,
+                "portfolio": portfolio_for_symbol(symbol),
                 "rank_score": rank_score,
                 "action": reviewed.action,
                 "confidence": reviewed.confidence,
@@ -71,6 +73,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
         except Exception as error:
             ranked.append({
                 "symbol": symbol,
+                "portfolio": portfolio_for_symbol(symbol),
                 "rank_score": 0,
                 "action": "HOLD",
                 "confidence": 0,
@@ -92,7 +95,7 @@ def build_advisory(client: DemoMt5Client | None = None) -> dict[str, Any]:
             })
 
     ranked.sort(key=lambda item: item["rank_score"], reverse=True)
-    return {"setups": ranked, "positions": positions, "account": account, "daily": daily, "profile": settings.trading_profile, "symbols": settings.trading_symbols}
+    return {"setups": ranked, "positions": positions, "account": account, "daily": daily, "profile": settings.trading_profile, "environment": settings.trading_environment, "portfolios": settings.trading_portfolios, "symbols": settings.trading_symbols}
 
 
 def main() -> None:

@@ -108,41 +108,78 @@ def build_signal(symbol: str, candles: list[dict[str, Any]], symbol_info: dict[s
     )
     take_profit_points = int(stop_points * config.risk_reward)
 
-    buy_checks = {
+    breakout_buy_checks = {
         "trend": fast_ema > slow_ema,
         "slope": fast_ema > previous_fast_ema,
         "momentum": 52 <= momentum_rsi <= 68,
         "breakout": last_close > breakout_high,
         "volume": volume_ratio >= 0.9
     }
-    sell_checks = {
+    breakout_sell_checks = {
         "trend": fast_ema < slow_ema,
         "slope": fast_ema < previous_fast_ema,
         "momentum": 32 <= momentum_rsi <= 48,
         "breakout": last_close < breakout_low,
         "volume": volume_ratio >= 0.9
     }
-    buy_score = sum(buy_checks.values())
-    sell_score = sum(sell_checks.values())
+    continuation_buy_checks = {
+        "trend": fast_ema > slow_ema,
+        "slope": fast_ema > previous_fast_ema,
+        "momentum": 44 <= momentum_rsi <= 66,
+        "above_slow": last_close > slow_ema,
+        "volume": volume_ratio >= 0.55
+    }
+    continuation_sell_checks = {
+        "trend": fast_ema < slow_ema,
+        "slope": fast_ema < previous_fast_ema,
+        "momentum": 34 <= momentum_rsi <= 56,
+        "below_slow": last_close < slow_ema,
+        "volume": volume_ratio >= 0.55
+    }
+
+    breakout_buy_score = sum(breakout_buy_checks.values())
+    breakout_sell_score = sum(breakout_sell_checks.values())
+    continuation_buy_score = sum(continuation_buy_checks.values())
+    continuation_sell_score = sum(continuation_sell_checks.values())
     indicators = {
         "ema20": round(fast_ema, 8),
         "ema50": round(slow_ema, 8),
         "rsi14": round(momentum_rsi, 2),
         "atr_points": float(atr_points),
         "spread_points": float(spread_points),
-        "volume_ratio": round(volume_ratio, 2)
+        "volume_ratio": round(volume_ratio, 2),
+        "breakout_buy_score": float(breakout_buy_score),
+        "breakout_sell_score": float(breakout_sell_score),
+        "continuation_buy_score": float(continuation_buy_score),
+        "continuation_sell_score": float(continuation_sell_score)
     }
 
     action = "HOLD"
-    score = max(buy_score, sell_score)
-    if buy_score >= 4 and buy_score > sell_score:
+    score = max(breakout_buy_score, breakout_sell_score)
+    strategy = "ema-rsi-breakout"
+    if breakout_buy_score >= 4 and breakout_buy_score > breakout_sell_score:
         action = "BUY"
-    elif sell_score >= 4 and sell_score > buy_score:
+    elif breakout_sell_score >= 4 and breakout_sell_score > breakout_buy_score:
         action = "SELL"
+    else:
+        score = max(continuation_buy_score, continuation_sell_score)
+        strategy = "ema-rsi-continuation"
+        if continuation_buy_score >= 4 and continuation_buy_score > continuation_sell_score:
+            action = "BUY"
+        elif continuation_sell_score >= 4 and continuation_sell_score > continuation_buy_score:
+            action = "SELL"
 
     if action == "HOLD":
-        signal = hold_signal(symbol, f"No aligned setup: buy score {buy_score}/5, sell score {sell_score}/5.", 0.45)
+        signal = hold_signal(
+            symbol,
+            (
+                f"No aligned setup: breakout buy/sell {breakout_buy_score}/5/{breakout_sell_score}/5, "
+                f"continuation buy/sell {continuation_buy_score}/5/{continuation_sell_score}/5."
+            ),
+            0.45
+        )
         signal.indicators = indicators
+        signal.strategy = "multi-setup-scan"
         return signal
 
     confidence = min(0.62 + score * 0.025, 0.75)
@@ -154,8 +191,9 @@ def build_signal(symbol: str, candles: list[dict[str, Any]], symbol_info: dict[s
         stop_loss_pips=stop_points,
         take_profit_pips=take_profit_points,
         reason=(
-            f"{action} setup passed {score}/5 checks. EMA trend and slope align, RSI={momentum_rsi:.1f}, "
+            f"{action} {strategy} setup passed {score}/5 checks. EMA trend and slope align, RSI={momentum_rsi:.1f}, "
             f"volume={volume_ratio:.2f}x, ATR stop={stop_points}, target={take_profit_points}."
         ),
+        strategy=strategy,
         indicators=indicators
     )

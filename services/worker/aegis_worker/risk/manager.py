@@ -1,12 +1,12 @@
 from typing import Any
 
 from aegis_worker.config import settings
+from aegis_worker.strategy_config import config_for_symbol
 
 
 class RiskManager:
     def __init__(self) -> None:
         self.allowed_symbols = set(settings.trading_symbols)
-        self.max_lot_size = 0.01
         self.min_confidence = 0.65
 
     def validate(self, signal: Any, account: dict[str, Any], daily_stats: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -46,8 +46,8 @@ class RiskManager:
         if signal.symbol not in self.allowed_symbols:
             return {"approved": False, "reason": "Symbol is not allowed."}
 
-        if signal.lot_size > self.max_lot_size:
-            return {"approved": False, "reason": "Lot size is above MVP limit."}
+        if signal.lot_size > config_for_symbol(signal.symbol).lot_size:
+            return {"approved": False, "reason": "Lot size is above the symbol strategy limit."}
 
         if signal.confidence < self.min_confidence:
             return {"approved": False, "reason": "Confidence is below threshold."}

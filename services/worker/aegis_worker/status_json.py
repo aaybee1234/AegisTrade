@@ -16,7 +16,9 @@ def build_status(client: DemoMt5Client | None = None) -> dict[str, Any]:
         "daily": daily,
         "bot": {
             "auto_trade_enabled": settings.auto_trade_enabled,
+            "trading_environment": settings.trading_environment,
             "trading_profile": settings.trading_profile,
+            "trading_portfolios": settings.trading_portfolios,
             "max_open_trades": settings.max_open_trades,
             "max_daily_trades": settings.max_daily_trades,
             "max_risk_per_trade_usd": settings.max_risk_per_trade_usd,

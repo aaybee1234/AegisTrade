@@ -307,6 +307,17 @@ npm run windows:status
 npm run windows:test-mt5
 ```
 
+Restart individual scheduled tasks on the VPS:
+
+```powershell
+Stop-ScheduledTask -TaskName AegisTrade-API
+Stop-ScheduledTask -TaskName AegisTrade-Web
+Stop-ScheduledTask -TaskName AegisTrade-MT5-Worker
+Start-ScheduledTask -TaskName AegisTrade-API
+Start-ScheduledTask -TaskName AegisTrade-Web
+Start-ScheduledTask -TaskName AegisTrade-MT5-Worker
+```
+
 Full guide:
 
 ```text
@@ -388,21 +399,47 @@ GET /mt5/ai-activity
 
 Use these during demo testing to prove whether the bot scanned, why a trade was vetoed, whether OpenAI was called, and whether MT5 accepted or rejected an order. Before multi-user launch, logs must be moved into database-backed, per-user audit tables with secret redaction and role-based access.
 
-## Live Life demo profile
+## Live Life demo environment
 
-`live_life` is an OpenAI-independent testing profile for demo accounts. The deterministic EMA/RSI/breakout strategy still creates each setup, while the local review profile replaces only the OpenAI/news approval step. Demo-account enforcement, configured-symbol allowlisting, spread checks, duplicate-position prevention, cooldowns, broker stop validation, daily limits, and dollar-risk sizing remain active.
+`live_life` is now a separate OpenAI-independent testing environment, not the main guarded module. The dashboard route is:
+
+```text
+/live-life
+```
+
+The main dashboard remains at `/`. Both routes read the active backend account, but the UI labels Live Life as a local deterministic demo module so testing is not confused with the guarded AI review flow.
+
+Environment selection is controlled from `.env`:
+
+```env
+AEGIS_TRADING_ENV=main       # guarded default
+# AEGIS_TRADING_ENV=live_life
+```
+
+When `AEGIS_TRADING_ENV=live_life`, the worker loads `.env.live-life` after `.env` and overrides only trading settings. Keep credentials and tokens in `.env`; do not duplicate secrets into `.env.live-life`.
 
 ```env
 TRADING_PROFILE=live_life
-TRADING_SYMBOLS=XAUUSDm,EURUSDm,GBPUSDm,USDJPYm,AUDUSDm,USDCADm,BTCUSDm,ETHUSDm
+TRADING_PORTFOLIOS=metals,energy,crypto
+TRADING_SYMBOLS=
 MAX_OPEN_TRADES=2
 MAX_DAILY_TRADES=100
 MAX_RISK_PER_TRADE_USD=3.00
 TARGET_PROFIT_PER_TRADE_USD=0.50
 MAX_DAILY_LOSS_USD=30.00
 MINIMUM_RISK_REWARD=0.10
+AI_REVIEW_REQUIRED=false
 ```
 
-The worker may open up to two independently qualified symbols in one scan. `$3.00` is the maximum estimated loss accepted by the sizing gate and `$0.50` is the target used for TP/automatic profit closing. Broker execution, spread, commission, and slippage can change realized results. No profile can guarantee profit-only trades.
+Current portfolios expand to these Exness demo symbols when available in Market Watch:
 
-To restore OpenAI review, set `TRADING_PROFILE=guarded` and restart the services. The guarded profile vetoes trades when its configured OpenAI review is unavailable; the `live_life` profile makes no OpenAI request.
+```text
+metals: XAUUSDm, XAGUSDm, XPTUSDm, XPDUSDm
+energy: USOILm, UKOILm
+crypto: BTCUSDm, ETHUSDm, BTCUSDTm, ETHBTCm
+forex:  EURUSDm, GBPUSDm, USDJPYm, AUDUSDm, USDCADm
+```
+
+The strategy scans breakout and continuation setups. The worker may open up to two independently qualified symbols in one scan. `$3.00` is the maximum estimated stop loss accepted by the sizing gate and `$0.50` is the target used for TP/automatic profit closing. Broker execution, spread, commission, and slippage can change realized results. No profile can guarantee profit-only trades.
+
+To restore OpenAI review, set `AEGIS_TRADING_ENV=main`, keep `TRADING_PROFILE=guarded`, and restart the services. The guarded profile vetoes trades when its configured OpenAI review is unavailable; the `live_life` profile makes no OpenAI request.

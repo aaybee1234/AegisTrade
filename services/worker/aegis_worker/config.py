@@ -1,15 +1,14 @@
 import os
 from pathlib import Path
 
+from aegis_worker.portfolio_config import resolve_symbols
+
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 
-def load_env_file() -> None:
-    project_root = Path(__file__).resolve().parents[3]
-    env_path = project_root / ".env"
-
+def load_env_file(env_path: Path, override: bool = False) -> None:
     if not env_path.exists():
         return
 
@@ -19,17 +18,27 @@ def load_env_file() -> None:
             continue
 
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if override:
+            os.environ[key] = value
+        else:
+            os.environ.setdefault(key, value)
 
 
-load_env_file()
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+load_env_file(PROJECT_ROOT / ".env")
+ACTIVE_TRADING_ENV = os.getenv("AEGIS_TRADING_ENV", "main").lower()
+if ACTIVE_TRADING_ENV == "live_life":
+    load_env_file(PROJECT_ROOT / ".env.live-life", override=True)
 
 
-def parse_symbols(value: str) -> list[str]:
-    return [symbol.strip() for symbol in value.split(',') if symbol.strip()]
+def parse_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 class Settings:
+    trading_environment: str = ACTIVE_TRADING_ENV
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     openai_reasoning_model: str = os.getenv("OPENAI_REASONING_MODEL", "gpt-4.1")
@@ -51,7 +60,11 @@ class Settings:
     auto_scan_interval_seconds: int = int(os.getenv("AUTO_SCAN_INTERVAL_SECONDS", "300"))
     news_refresh_seconds: int = int(os.getenv("NEWS_REFRESH_SECONDS", "900"))
     ai_review_required: bool = os.getenv("AI_REVIEW_REQUIRED", "true").lower() == "true"
-    trading_symbols: list[str] = parse_symbols(os.getenv("TRADING_SYMBOLS", "XAUUSDm,EURUSDm,BTCUSDm"))
+    trading_portfolios: list[str] = parse_csv(os.getenv("TRADING_PORTFOLIOS", ""))
+    trading_symbols: list[str] = resolve_symbols(
+        trading_portfolios,
+        parse_csv(os.getenv("TRADING_SYMBOLS", "XAUUSDm,EURUSDm,BTCUSDm"))
+    )
 
 
 settings = Settings()

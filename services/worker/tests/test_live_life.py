@@ -9,13 +9,13 @@ from aegis_worker.risk.manager import RiskManager
 
 def signal(action: str = "BUY") -> SimpleNamespace:
     return SimpleNamespace(
-        symbol="EURUSDm",
+        symbol="BTCUSDm",
         action=action,
         confidence=0.66,
         lot_size=0.01,
         entry_type="MARKET",
-        stop_loss_pips=200,
-        take_profit_pips=400,
+        stop_loss_pips=12000,
+        take_profit_pips=19200,
         reason="Deterministic setup."
     )
 
