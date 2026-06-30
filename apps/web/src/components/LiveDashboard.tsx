@@ -12,7 +12,7 @@ import {
   TrendingUp,
   WalletCards
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Account = {
   login?: string;
@@ -122,6 +122,12 @@ type Advisory = {
   portfolios?: string[];
 };
 
+type PositionSample = {
+  ts: number;
+  price: number;
+  profit: number;
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const EMPTY_STATUS: Mt5Status = {
   account: { connected: false, is_demo: true, connection_error: "Waiting for first sync." },
@@ -148,6 +154,82 @@ function money(value = 0, currency = "USD") {
     currency,
     maximumFractionDigits: 2
   }).format(value);
+}
+
+
+function formatNumber(value = 0, maximumFractionDigits = 2) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value);
+}
+
+function AnimatedValue({
+  value = 0,
+  currency,
+  className,
+  suffix = "",
+  maximumFractionDigits = 2
+}: {
+  value?: number;
+  currency?: string;
+  className?: string;
+  suffix?: string;
+  maximumFractionDigits?: number;
+}) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const latestValue = useRef(value);
+
+  useEffect(() => {
+    const start = latestValue.current;
+    const end = value;
+    latestValue.current = value;
+    const startedAt = performance.now();
+    const duration = 700;
+    let frame = 0;
+
+    const animate = (now: number) => {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(start + (end - start) * eased);
+      if (progress < 1) frame = window.requestAnimationFrame(animate);
+    };
+
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [value]);
+
+  const content = currency
+    ? money(displayValue, currency)
+    : `${formatNumber(displayValue, maximumFractionDigits)}${suffix}`;
+
+  return <strong className={className}>{content}</strong>;
+}
+
+function Sparkline({ samples, mode = "profit" }: { samples: PositionSample[]; mode?: "profit" | "price" }) {
+  const values = samples.map((sample) => mode === "profit" ? sample.profit : sample.price);
+  if (values.length < 2) return <div className="sparkline emptySpark">Waiting for ticks</div>;
+
+  const width = 150;
+  const height = 44;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const yFor = (value: number) => height - ((value - min) / range) * (height - 8) - 4;
+  const points = values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * width;
+    return `${x.toFixed(1)},${yFor(value).toFixed(1)}`;
+  }).join(" ");
+  const last = values[values.length - 1];
+  const first = values[0];
+  const trendClass = last >= first ? "positiveStroke" : "negativeStroke";
+
+  return (
+    <div className="sparkWrap" aria-label={`${mode} live chart`}>
+      <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img">
+        <polyline className={`sparkPath ${trendClass}`} points={points} />
+        <circle className={trendClass} cx={width} cy={yFor(last)} r="3" />
+      </svg>
+      <span>{mode === "profit" ? money(last) : formatNumber(last, 5)}</span>
+    </div>
+  );
 }
 
 function advisoryForPosition(position: Position) {
@@ -178,6 +260,9 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
   const [closingTicket, setClosingTicket] = useState<string | null>(null);
   const [isRunningCycle, setIsRunningCycle] = useState(false);
   const [isChangingTrading, setIsChangingTrading] = useState(false);
+  const [positionHistory, setPositionHistory] = useState<Record<string, PositionSample[]>>({});
+  const advisoryPollRef = useRef(0);
+  const aiPollRef = useRef(0);
 
   const account = status.account;
   const currency = account.currency ?? "USD";
@@ -189,17 +274,37 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
   const setupTitle = isLiveLifeModule ? "Live Life Setups" : "Ranked Setups";
   const setupLabel = isLiveLifeModule ? "Local strategy scanner" : "Live AI advisory";
 
-  const sync = useCallback(async () => {
+  const sync = useCallback(async (includeHeavy = false) => {
     setIsSyncing(true);
     try {
+      const now = Date.now();
+      const shouldPollAdvisory = includeHeavy || now - advisoryPollRef.current > 6000;
+      const shouldPollAi = includeHeavy || now - aiPollRef.current > 12000;
       const [nextStatus, nextAdvisory, nextAiActivity] = await Promise.all([
         fetchJson<Mt5Status>("/mt5/status"),
-        fetchJson<Advisory>("/mt5/advisory"),
-        fetchJson<AiActivity>("/mt5/ai-activity")
+        shouldPollAdvisory ? fetchJson<Advisory>("/mt5/advisory") : Promise.resolve(null),
+        shouldPollAi ? fetchJson<AiActivity>("/mt5/ai-activity") : Promise.resolve(null)
       ]);
       setStatus(nextStatus);
-      setAdvisory(nextAdvisory);
-      setAiActivity(nextAiActivity);
+      setPositionHistory((current) => {
+        const next: Record<string, PositionSample[]> = {};
+        for (const position of nextStatus.positions) {
+          const samples = current[position.ticket] ?? [];
+          next[position.ticket] = [
+            ...samples,
+            { ts: now, price: position.price_current, profit: position.profit }
+          ].slice(-48);
+        }
+        return next;
+      });
+      if (nextAdvisory) {
+        setAdvisory(nextAdvisory);
+        advisoryPollRef.current = now;
+      }
+      if (nextAiActivity) {
+        setAiActivity(nextAiActivity);
+        aiPollRef.current = now;
+      }
       setLastSync(new Date().toLocaleTimeString());
       setSyncError(null);
     } catch (error) {
@@ -210,10 +315,10 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
   }, []);
 
   useEffect(() => {
-    void sync();
+    void sync(true);
     const id = window.setInterval(() => {
-      void sync();
-    }, 3000);
+      void sync(false);
+    }, 1000);
     return () => window.clearInterval(id);
   }, [sync]);
 
@@ -229,7 +334,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
       setSyncError(error instanceof Error ? error.message : "Close request failed");
     } finally {
       setClosingTicket(null);
-      await sync();
+      await sync(true);
     }
   }
 
@@ -266,7 +371,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
       setSyncError(error instanceof Error ? error.message : "Trading control failed");
     } finally {
       setIsChangingTrading(false);
-      await sync();
+      await sync(true);
     }
   }
 
@@ -286,7 +391,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
       setSyncError(error instanceof Error ? error.message : "Agent cycle failed");
     } finally {
       setIsRunningCycle(false);
-      await sync();
+      await sync(true);
     }
   }
 
@@ -318,7 +423,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
             <button className="iconButton" aria-label="Open bot settings" title="Settings">
               <SlidersHorizontal size={18} />
             </button>
-            <button className="secondary" onClick={() => void sync()} disabled={isSyncing}>
+            <button className="secondary" onClick={() => void sync(true)} disabled={isSyncing}>
               <RefreshCw size={18} />
               {isSyncing ? "Syncing" : "Sync Now"}
             </button>
@@ -359,17 +464,17 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
         <section className="metrics" aria-label="Account metrics">
           <div className="metric liveMetric">
             <span>Balance</span>
-            <strong>{money(account.balance, currency)}</strong>
+            <AnimatedValue value={account.balance ?? 0} currency={currency} />
             <small>{account.is_demo ? "Demo account" : "Account type unknown"}</small>
           </div>
           <div className="metric liveMetric">
             <span>Equity</span>
-            <strong>{money(account.equity, currency)}</strong>
+            <AnimatedValue value={account.equity ?? 0} currency={currency} />
             <small>Polls MT5 every 3 seconds</small>
           </div>
           <div className="metric liveMetric">
             <span>Floating P/L</span>
-            <strong className={(status.summary.floating_pl ?? 0) >= 0 ? "positive" : "negative"}>{money(status.summary.floating_pl, currency)}</strong>
+            <AnimatedValue value={status.summary.floating_pl ?? 0} currency={currency} className={(status.summary.floating_pl ?? 0) >= 0 ? "positive livePulse" : "negative livePulse"} />
             <small>{status.summary.open_positions} open positions</small>
           </div>
           <div className="metric">
@@ -388,7 +493,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
           </div>
           <div className="metric liveMetric">
             <span>Measured win rate</span>
-            <strong>{status.daily.win_rate.toFixed(1)}%</strong>
+            <AnimatedValue value={status.daily.win_rate} suffix="%" maximumFractionDigits={1} />
             <small>{status.daily.wins} wins / {status.daily.losses} losses, {money(status.daily.net_profit, currency)} net</small>
           </div>
         </section>
@@ -410,6 +515,7 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
                 <span>Open</span>
                 <span>SL / TP</span>
                 <span>P/L</span>
+                <span>Live chart</span>
                 <span>Advisory</span>
                 <span>Action</span>
               </div>
@@ -423,7 +529,8 @@ export function LiveDashboard({ module = "main" }: { module?: DashboardModule })
                     <span>{position.volume}</span>
                     <span>{position.price_open}</span>
                     <span>{position.sl} / {position.tp}</span>
-                    <span className={position.profit >= 0 ? "positive" : "negative"}>{money(position.profit, currency)}</span>
+                    <AnimatedValue value={position.profit} currency={currency} className={position.profit >= 0 ? "positive livePulse" : "negative livePulse"} />
+                    <Sparkline samples={positionHistory[position.ticket] ?? []} mode="profit" />
                     <span className="advisoryText">{advisoryForPosition(position)}</span>
                     <button className="dangerButton" onClick={() => void closePosition(position.ticket)} disabled={closingTicket === position.ticket}>
                       {closingTicket === position.ticket ? "Closing" : "Close"}
